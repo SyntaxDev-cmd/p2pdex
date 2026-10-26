@@ -6,14 +6,11 @@
     android:layout_height="match_parent"
     android:background="#FF000000">
 
-    <androidx.media3.ui.PlayerView
-        android:id="@+id/player"
+    <!-- o PlayerView entra aqui por código: SurfaceView (padrão) ou TextureView (modo compatível) -->
+    <FrameLayout
+        android:id="@+id/playerHolder"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        app:show_timeout="4000"
-        app:show_buffering="always"
-        app:show_shuffle_button="false"
-        app:show_subtitle_button="true" />
+        android:layout_height="match_parent" />
 
     <LinearLayout
         android:id="@+id/infoBar"
@@ -142,6 +139,19 @@
             style="@style/TopIcon"
             android:src="@drawable/ic_aspect" />
     </LinearLayout>
+
+    <ImageView
+        android:id="@+id/btnBack"
+        style="@style/TopIcon"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_gravity="top|start"
+        android:layout_margin="16dp"
+        android:layout_marginStart="16dp"
+        android:contentDescription="Voltar"
+        android:padding="11dp"
+        android:src="@drawable/ic_back"
+        android:visibility="gone" />
 
     <TextView
         android:id="@+id/nextBanner"
