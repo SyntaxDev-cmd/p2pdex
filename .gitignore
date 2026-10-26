@@ -1,0 +1,18 @@
+# Android
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/*.keystore
+android/*.jks
+*.apk
+*.aab
+.idea/
+*.iml
+
+# Painel: dados gerados em produção
+panel/data/*.sqlite*
+panel/data/dbname.php
+panel/uploads/*
+!panel/uploads/.htaccess
+!panel/uploads/index.html

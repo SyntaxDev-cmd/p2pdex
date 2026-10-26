@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="2dp"
+    android:clickable="true"
+    android:focusable="true"
+    android:gravity="center_vertical"
+    android:minHeight="48dp"
+    android:orientation="horizontal"
+    android:paddingStart="8dp"
+    android:paddingEnd="10dp">
+
+    <TextView
+        android:id="@+id/num"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:duplicateParentState="true"
+        android:gravity="center"
+        android:minWidth="30dp"
+        android:textSize="14sp"
+        android:textStyle="bold" />
+
+    <ImageView
+        android:id="@+id/logo"
+        android:layout_width="46dp"
+        android:layout_height="30dp"
+        android:layout_marginStart="4dp"
+        android:layout_marginEnd="10dp"
+        android:scaleType="fitCenter" />
+
+    <TextView
+        android:id="@+id/name"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:duplicateParentState="true"
+        android:ellipsize="end"
+        android:singleLine="true"
+        android:textSize="15sp" />
+
+    <ImageView
+        android:id="@+id/playing"
+        android:layout_width="18dp"
+        android:layout_height="18dp"
+        android:layout_marginStart="6dp"
+        android:duplicateParentState="true"
+        android:src="@drawable/ic_play"
+        android:visibility="gone" />
+
+    <ImageView
+        android:id="@+id/fav"
+        android:layout_width="14dp"
+        android:layout_height="14dp"
+        android:layout_marginStart="6dp"
+        android:duplicateParentState="true"
+        android:src="@drawable/ic_star"
+        android:visibility="gone" />
+</LinearLayout>

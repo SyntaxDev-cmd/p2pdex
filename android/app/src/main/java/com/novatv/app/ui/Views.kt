@@ -1,0 +1,38 @@
+package com.novatv.app.ui
+
+import android.content.Context
+import android.util.AttributeSet
+import android.widget.FrameLayout
+import com.novatv.app.R
+
+/** FrameLayout com proporção fixa (largura manda). ratio = altura / largura. */
+class AspectFrame @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = null) : FrameLayout(ctx, attrs) {
+    var ratio: Float = 9f / 16f
+        set(v) {
+            field = v
+            requestLayout()
+        }
+
+    init {
+        if (attrs != null) {
+            val a = ctx.obtainStyledAttributes(attrs, R.styleable.AspectFrame)
+            ratio = a.getFloat(R.styleable.AspectFrame_ratio, ratio)
+            a.recycle()
+        }
+    }
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val w = MeasureSpec.getSize(widthMeasureSpec)
+        val h = (w * ratio).toInt()
+        val hMode = MeasureSpec.getMode(heightMeasureSpec)
+        val hMax = MeasureSpec.getSize(heightMeasureSpec)
+        if (hMode != MeasureSpec.UNSPECIFIED && h > hMax && hMax > 0) {
+            // não cabe na altura: limita pela altura e reduz a largura
+            val nw = (hMax / ratio).toInt()
+            super.onMeasure(MeasureSpec.makeMeasureSpec(nw, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(hMax, MeasureSpec.EXACTLY))
+            setMeasuredDimension(nw, hMax)
+            return
+        }
+        super.onMeasure(MeasureSpec.makeMeasureSpec(w, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(h, MeasureSpec.EXACTLY))
+    }
+}

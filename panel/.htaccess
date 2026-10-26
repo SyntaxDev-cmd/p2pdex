@@ -1,0 +1,21 @@
+Options -Indexes
+DirectoryIndex index.php
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteRule ^(inc|data)(/|$) - [F,L]
+</IfModule>
+
+<FilesMatch "\.(sqlite|sqlite-wal|sqlite-shm|db|log|md)$">
+  Require all denied
+</FilesMatch>
+
+<IfModule mod_headers.c>
+  Header always set X-Frame-Options "SAMEORIGIN"
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set Referrer-Policy "same-origin"
+</IfModule>
+
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE application/json text/html text/css application/javascript
+</IfModule>
