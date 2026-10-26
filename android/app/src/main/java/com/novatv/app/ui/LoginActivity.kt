@@ -376,6 +376,8 @@ class LoginActivity : BaseActivity() {
                 when (e) {
                     is AuthException -> e.message ?: "Usuário ou senha inválidos."
                     is com.novatv.app.data.NoServerException -> e.message.orEmpty()
+                    is com.novatv.app.data.LoginNetworkException ->
+                        "Não foi possível conectar ao servidor. Verifique sua internet e tente novamente.\n" + e.detail
                     else -> "Não foi possível conectar ao servidor. Verifique sua internet e tente novamente."
                 }
             )

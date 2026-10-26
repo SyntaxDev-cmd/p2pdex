@@ -136,12 +136,12 @@ class XtreamProvider(
         val o = try {
             JSONObject(text.trim().removePrefix("﻿"))
         } catch (e: org.json.JSONException) {
-            throw NotXtreamException("Resposta não é Xtream")
+            throw NotXtreamException("o endereço respondeu, mas não é uma API Xtream/P2P compatível")
         }
         val ui = o.optJSONObject("user_info") ?: run {
             // alguns P2P respondem só {"auth":0} ou {"error": "..."} quando o login é recusado
             if (o.has("auth") || o.has("error") || o.has("message")) throw AuthException("Usuário ou senha inválidos")
-            throw NotXtreamException("Resposta não é Xtream")
+            throw NotXtreamException("o endereço respondeu, mas não é uma API Xtream/P2P compatível")
         }
         val status = ui.optString("status").trim()
         val auth = ui.opt("auth")
@@ -162,8 +162,9 @@ class XtreamProvider(
         val text = Net.execute(Net.api, apiRequest(b, "", emptyMap(), u, post)).use { resp ->
             when {
                 resp.code == 401 -> throw AuthException("Usuário ou senha inválidos")
-                resp.code == 404 || resp.code == 405 -> throw NotXtreamException("HTTP ${resp.code}")
-                !resp.isSuccessful -> throw IOException("HTTP ${resp.code}")
+                resp.code == 404 || resp.code == 405 -> throw NotXtreamException("a API não existe nesse endereço (HTTP ${resp.code})")
+                resp.code == 403 -> throw IOException("o servidor bloqueou o acesso (HTTP 403)")
+                !resp.isSuccessful -> throw IOException("o servidor respondeu com erro (HTTP ${resp.code})")
             }
             resp.body?.string().orEmpty()
         }

@@ -61,10 +61,9 @@ object Repo {
     suspend fun loginAuto(user: String, pass: String): Account = withContext(Dispatchers.IO) {
         val list = servers().sortedByDescending { it.id == Prefs.serverId }
         if (list.isEmpty()) throw NoServerException()
-        if (list.size == 1) return@withContext login(list[0], user, pass)
         val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
         val winner = CompletableDeferred<Triple<ServerDef, Provider, Account>>()
-        val errors = mutableListOf<Exception>()
+        val errors = mutableListOf<Pair<ServerDef, Exception>>()
         val jobs = list.map { s ->
             scope.launch {
                 try {
@@ -73,8 +72,8 @@ object Repo {
                     winner.complete(Triple(s, p, acc))
                 } catch (e: Exception) {
                     synchronized(errors) {
-                        errors.add(e)
-                        if (errors.size == list.size) winner.completeExceptionally(XtreamProvider.bestError(errors))
+                        errors.add(s to e)
+                        if (errors.size == list.size) winner.completeExceptionally(loginError(errors))
                     }
                 }
             }
@@ -87,6 +86,17 @@ object Repo {
             jobs.forEach { it.cancel() }
             scope.cancel()
         }
+    }
+
+    /**
+     * Junta os erros de todos os servidores: senha errada/vencida tem prioridade;
+     * senão, explica o que aconteceu em cada servidor (ajuda o suporte).
+     */
+    private fun loginError(errors: List<Pair<ServerDef, Exception>>): Exception {
+        val auth = errors.map { it.second }.filterIsInstance<AuthException>()
+        if (auth.isNotEmpty()) return XtreamProvider.bestError(auth)
+        val detail = errors.joinToString("\n") { (s, e) -> "• ${s.name}: ${Net.describe(e)}" }
+        return LoginNetworkException(detail)
     }
 
     /** Login automático com os dados salvos (em qualquer servidor ativo do painel). */

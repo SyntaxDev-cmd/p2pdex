@@ -56,22 +56,30 @@ jobs:
         run: |
           chmod +x gradlew
           set -o pipefail
-          if ! ./gradlew assembleRelease --no-daemon --stacktrace 2>&1 | tee build.log; then
+          if ! ./gradlew assembleFullRelease bundlePlayRelease --no-daemon --stacktrace 2>&1 | tee build.log; then
             # publica o motivo da falha como anotação (visível no resumo do Actions)
             msg=$(grep -E -A4 "^e: |error:|What went wrong|AAPT|Could not|Execution failed|Unresolved|> " build.log | grep -v "^\s*at " | head -80 | sed -e 's/%/%25/g' | sed -e ':a;N;$!ba;s/\n/%0A/g')
             echo "::error title=Falha no build::${msg}"
             exit 1
           fi
           mkdir -p ../dist
-          cp app/build/outputs/apk/release/*.apk "../dist/NovaTV-v${{ github.run_number }}.apk"
+          cp app/build/outputs/apk/full/release/*.apk "../dist/NovaTV-v${{ github.run_number }}.apk"
           mkdir -p ../dist-latest
-          cp app/build/outputs/apk/release/*.apk ../dist-latest/NovaTV.apk
+          cp app/build/outputs/apk/full/release/*.apk ../dist-latest/NovaTV.apk
+          mkdir -p ../dist-play
+          cp app/build/outputs/bundle/playRelease/*.aab "../dist-play/NovaTV-play-v${{ github.run_number }}.aab"
 
       - uses: actions/upload-artifact@v4
         with:
           name: NovaTV-apk-${{ github.run_number }}
           path: dist/*.apk
           if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NovaTV-playstore-aab-${{ github.run_number }}
+          path: dist-play/*.aab
+          if-no-files-found: warn
 
       - name: Publicar APK na Release "latest"
         if: github.ref == 'refs/heads/main'

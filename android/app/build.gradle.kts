@@ -11,12 +11,12 @@ val hasKeystore = keystorePath.isNotEmpty() && rootProject.file(keystorePath).ex
 
 android {
     namespace = "com.novatv.app"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = prop("APP_ID", "com.novatv.app")
         minSdk = 21
-        targetSdk = 34
+        targetSdk = 36
         versionCode = prop("VERSION_CODE", "1").toInt()
         versionName = prop("VERSION_NAME", "1.0.0")
 
@@ -46,6 +46,21 @@ android {
         }
         debug {
             applicationIdSuffix = ".debug"
+        }
+    }
+
+    // full: APK para instalar direto (TV Box, celular), com atualização automática pelo painel
+    // play: versão para a Google Play (sem instalador próprio; atualiza pela loja). Gere com bundlePlayRelease
+    flavorDimensions += "store"
+    productFlavors {
+        create("full") {
+            dimension = "store"
+            isDefault = true
+            buildConfigField("boolean", "PLAY_STORE", "false")
+        }
+        create("play") {
+            dimension = "store"
+            buildConfigField("boolean", "PLAY_STORE", "true")
         }
     }
 
@@ -84,6 +99,7 @@ dependencies {
     implementation("androidx.media3:media3-ui:$media3")
     implementation("androidx.media3:media3-datasource-okhttp:$media3")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp-dnsoverhttps:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("io.coil-kt:coil:2.7.0")
 }

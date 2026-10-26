@@ -542,19 +542,23 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
     }
 
     private fun tilesRow(): View {
-        val row = LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL; clipChildren = false }
+        val row = LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL; clipChildren = false; clipToPadding = false }
         val list = tiles()
         list.forEachIndexed { i, t ->
             val r = Ui.radius(act).toFloat()
+            // ícone em cima e texto embaixo: cabe inteiro em qualquer largura (nada cortado)
             val box = LinearLayout(act).apply {
-                orientation = if (portrait) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
+                orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
                 isFocusable = true
                 isClickable = true
-                val p = Ui.dp(act, if (portrait) 8 else 12)
+                val p = Ui.dp(act, 6)
                 setPadding(p, p, p, p)
                 background = android.graphics.drawable.StateListDrawable().apply {
-                    val normal = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(Ui.withAlpha(t.c1, 225), Ui.withAlpha(t.c2, 225))).apply { cornerRadius = r }
+                    val normal = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(Ui.withAlpha(t.c1, 215), Ui.withAlpha(t.c2, 215))).apply {
+                        cornerRadius = r
+                        setStroke(Ui.dp(act, 1), Ui.withAlpha(Color.WHITE, 40))
+                    }
                     val focused = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(t.c1, t.c2)).apply {
                         cornerRadius = r
                         setStroke(Ui.dp(act, 3), Color.WHITE)
@@ -568,18 +572,22 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
             box.addView(ImageView(act).apply {
                 setImageResource(t.icon)
                 imageTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
-            }, LinearLayout.LayoutParams(Ui.dp(act, 24), Ui.dp(act, 24)))
+            }, LinearLayout.LayoutParams(Ui.dp(act, 22), Ui.dp(act, 22)))
             box.addView(TextView(act).apply {
                 text = t.label
-                textSize = if (portrait) 12f else 15f
+                textSize = if (portrait) 12f else 13f
                 typeface = Typeface.DEFAULT_BOLD
                 setTextColor(Color.WHITE)
+                gravity = Gravity.CENTER
                 maxLines = 1
-                setPadding(if (portrait) 0 else Ui.dp(act, 10), if (portrait) Ui.dp(act, 4) else 0, 0, 0)
-            })
+                isSingleLine = true
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                if (android.os.Build.VERSION.SDK_INT >= 23) hyphenationFrequency = android.text.Layout.HYPHENATION_FREQUENCY_NONE
+                setPadding(0, Ui.dp(act, 4), 0, 0)
+            }, LinearLayout.LayoutParams(-1, -2))
             Ui.focusZoom(box, 1.06f)
-            row.addView(box, LinearLayout.LayoutParams(0, Ui.dp(act, if (portrait) 64 else 58), 1f).apply {
-                if (i > 0) marginStart = Ui.dp(act, 10)
+            row.addView(box, LinearLayout.LayoutParams(0, Ui.dp(act, 62), 1f).apply {
+                if (i > 0) marginStart = Ui.dp(act, if (portrait) 8 else 10)
             })
         }
         return row

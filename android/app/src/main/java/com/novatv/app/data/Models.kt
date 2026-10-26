@@ -103,3 +103,6 @@ class AuthException(message: String) : Exception(message)
 
 /** O painel não mandou nenhum servidor ativo para este aparelho. */
 class NoServerException : java.io.IOException("Nenhum servidor disponível no momento. Fale com o suporte.")
+
+/** Nenhum servidor respondeu ao login; [detail] diz o motivo de cada um. */
+class LoginNetworkException(val detail: String) : java.io.IOException(detail)

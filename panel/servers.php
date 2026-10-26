@@ -122,9 +122,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $exp = !empty($ui['exp_date']) ? date('d/m/Y', (int)$ui['exp_date']) : 'sem validade';
                     $info = 'Status: ' . ($ui['status'] ?? '?') . ' · expira ' . $exp . ' · conexões ' . ($ui['active_cons'] ?? '0') . '/' . ($ui['max_connections'] ?? '?');
                 } elseif (is_array($j)) {
-                    $info = 'Servidor respondeu, mas login recusado';
+                    $info = 'Servidor respondeu, mas login recusado (usuário enviado: ' . $u . ')';
                 } else {
-                    $info = 'HTTP ' . $r['code'] . ($r['error'] ? ' · ' . $r['error'] : '') . ' · resposta não é API Xtream';
+                    // mostra o começo da resposta para descobrir o formato da API
+                    $snippet = trim(preg_replace('/\s+/', ' ', strip_tags(mb_substr((string)$r['body'], 0, 400))));
+                    $info = 'HTTP ' . $r['code'] . ($r['error'] ? ' · ' . $r['error'] : '') . ' · resposta não é API Xtream'
+                        . ($snippet !== '' ? ' · resposta: "' . mb_substr($snippet, 0, 160) . '"' : ' · resposta vazia');
                 }
                 $testResult['rows'][] = ['url' => $base, 'ok' => $ok, 'ms' => $r['ms'], 'info' => $info];
             }
