@@ -1,6 +1,6 @@
 # NovaTV — App IPTV/P2P para Android (TV + celular) + Painel PHP com revendas
 
-**APK pronto para baixar:** [Releases → latest](https://github.com/SyntaxDev-cmd/p2pdex/releases/tag/latest). O APK é gerado e publicado automaticamente a cada atualização da branch `main`.
+**APK pronto para baixar:** [NovaTV.apk (sempre a última versão)](https://github.com/SyntaxDev-cmd/p2pdex/releases/download/latest/NovaTV.apk) · [todas as versões](https://github.com/SyntaxDev-cmd/p2pdex/releases). O APK é gerado e publicado automaticamente a cada atualização da branch `main`.
 
 - **App Android** (`android/`): um único APK para TV Box, Android TV e celular (Android 5.0+). Visual no estilo dos apps de TV Box: abas no topo, mosaico de destaques, lista de canais com prévia e guia de programação.
 - **Painel** (`panel/`): PHP + SQLite, sem MySQL. O administrador muda tudo e os revendedores gerenciam as próprias DNS/P2P e aparelhos.
