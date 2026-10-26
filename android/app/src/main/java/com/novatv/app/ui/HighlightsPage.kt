@@ -30,6 +30,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Calendar
 
 /** Aba DESTAQUES: a tela inicial com mosaico, atalhos e fileiras de filmes, séries e canais. */
@@ -120,61 +121,90 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
         rowAdapters.clear()
         hero = null
         firstFocusable = null
+        resumeRow = null
         loading.visibility = View.VISIBLE
         job = act.launch {
+            // lugar fixo no topo para o mosaico; é preenchido depois, sem travar a tela
+            val mosaicHolder = FrameLayout(act)
+            column.addView(mosaicHolder, LinearLayout.LayoutParams(-1, -2))
             try {
-                // categorias que viram fileiras (prioriza lançamentos/cinema)
-                val catsByKind = kinds().associateWith { k -> runCatching { pick(Repo.categories(k), if (kind == null) 3 else 6) }.getOrDefault(emptyList()) }
-                val rows = catsByKind.values.flatten().let { if (kind == null) interleave(it) else it }
-                val rowItems = coroutineScope {
-                    rows.map { c -> c to async { runCatching { Repo.items(c) }.getOrDefault(emptyList()) } }
-                        .map { (c, d) -> c to d.await().sortedByDescending { it.added } }
-                }
-                val trending = if (Tmdb.enabled) coroutineScope {
-                    kinds().map { k -> async { runCatching { Tmdb.trendingInCatalog(k == Kind.SERIES) }.getOrDefault(emptyList()) } }.flatMap { it.await() }
-                } else emptyList()
+                // 1) ESSENCIAL: categorias + fileiras (com teto de tempo para a tela nunca ficar presa)
+                val rowItems: List<Pair<Category, List<Media>>> = withTimeoutOrNull(20_000) {
+                    val catsByKind = kinds().associateWith { k -> runCatching { pick(Repo.categories(k), if (kind == null) 3 else 6) }.getOrDefault(emptyList()) }
+                    val rows = catsByKind.values.flatten().let { if (kind == null) interleave(it) else it }
+                    coroutineScope {
+                        rows.map { c -> c to async { runCatching { Repo.items(c) }.getOrDefault(emptyList()) } }
+                            .map { (c, d) -> c to d.await().sortedByDescending { it.added } }
+                    }
+                } ?: emptyList()
 
-                // ---- mosaico
-                if (PanelConfig.current.homeMosaic) {
-                    val features = buildFeatures(trending, rowItems)
-                    if (features.isNotEmpty()) column.addView(mosaic(features))
-                }
+                // já mostra o conteúdo e esconde o "carregando" — TMDB e mosaico entram depois
                 loading.visibility = View.GONE
+                loaded = true
 
-                // ---- fileiras
                 val resume = addRow("Continuar assistindo", resumeItems(), Kind.MOVIE)
                 resumeRow = resume
                 if (resume.second.itemCount == 0) resume.first.visibility = View.GONE
-                if (trending.isNotEmpty()) {
-                    addRow(if (kind == Kind.SERIES) "Séries em alta" else if (kind == Kind.MOVIE) "Filmes em alta" else "Em alta esta semana",
-                        trending.map { (t, m) -> PosterItem(m.name, t.poster.ifEmpty { m.icon }, m.kind, rating = t.rating, media = m) }, Kind.MOVIE)
-                }
                 val favs = Prefs.favorites().filter { it.kind != Kind.LIVE && (kind == null || it.kind == kind) }.map { PosterAdapter.from(it) }
                 if (favs.isNotEmpty()) addRow("Meus favoritos", favs, Kind.MOVIE)
                 if (kind == null) {
                     val favLive = Prefs.favorites(Kind.LIVE).map { PosterAdapter.from(it) }
                     if (favLive.isNotEmpty()) addRow("Canais favoritos", favLive, Kind.LIVE)
                 }
+                var hasRows = false
                 for ((c, items) in rowItems) {
                     if (items.isEmpty()) continue
+                    hasRows = true
                     addRow(c.name, items.take(30).map { PosterAdapter.from(it) }, c.kind, c)
                 }
+
+                // 2) OPCIONAL: TMDB "em alta" (não trava; teto de tempo)
+                val trending = if (Tmdb.enabled) (withTimeoutOrNull(12_000) {
+                    coroutineScope {
+                        kinds().map { k -> async { runCatching { Tmdb.trendingInCatalog(k == Kind.SERIES) }.getOrDefault(emptyList()) } }.flatMap { it.await() }
+                    }
+                } ?: emptyList()) else emptyList()
+                if (isActive && trending.isNotEmpty()) {
+                    addRow(if (kind == Kind.SERIES) "Séries em alta" else if (kind == Kind.MOVIE) "Filmes em alta" else "Em alta esta semana",
+                        trending.map { (t, m) -> PosterItem(m.name, t.poster.ifEmpty { m.icon }, m.kind, rating = t.rating, media = m) },
+                        Kind.MOVIE, index = column.indexOfChild(mosaicHolder) + 1)
+                }
+
+                // 3) OPCIONAL: mosaico no topo (não trava; teto de tempo)
+                if (isActive && PanelConfig.current.homeMosaic) {
+                    val features = (withTimeoutOrNull(12_000) { runCatching { buildFeatures(trending, rowItems) }.getOrNull() }) ?: emptyList()
+                    if (isActive && features.isNotEmpty()) {
+                        mosaicHolder.addView(mosaic(features))
+                        startRotation()
+                    }
+                }
+
+                // nada carregou mesmo: aviso com "tentar de novo"
+                val hasContent = hasRows || trending.isNotEmpty() || mosaicHolder.childCount > 0 ||
+                    (resumeRow?.second?.itemCount ?: 0) > 0 || favs.isNotEmpty()
+                if (!hasContent) showEmptyNotice()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
-                if (e is kotlinx.coroutines.CancellationException) throw e
+                loading.visibility = View.GONE
+                loaded = true
                 act.handleError(e)
+                if (column.childCount <= 1) showEmptyNotice()
             }
-            loading.visibility = View.GONE
-            loaded = true
-            if (column.childCount == 0) {
-                column.addView(TextView(act).apply {
-                    text = "Nenhum destaque disponível."
-                    setTextColor(Ui.text2)
-                    setPadding(0, Ui.dp(act, 40), 0, 0)
-                    gravity = Gravity.CENTER
-                })
-            }
-            startRotation()
         }
+    }
+
+    private fun showEmptyNotice() {
+        column.addView(TextView(act).apply {
+            text = "Não foi possível carregar os destaques.\n${if (Ui.isTv) "Pressione OK" else "Toque aqui"} para tentar de novo."
+            setTextColor(Ui.text2)
+            gravity = Gravity.CENTER
+            setPadding(0, Ui.dp(act, 40), 0, 0)
+            isFocusable = true
+            isClickable = true
+            setOnClickListener { reload() }
+            firstFocusable = this
+        })
     }
 
     private val priority = listOf("lanc", "estreia", "cinema", "2026", "2025", "novidade", "recente", "top", "netflix", "4k")
@@ -497,7 +527,7 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
         return row
     }
 
-    private fun addRow(name: String, items: List<PosterItem>, rowKind: Kind, category: Category? = null): Pair<View, PosterAdapter> {
+    private fun addRow(name: String, items: List<PosterItem>, rowKind: Kind, category: Category? = null, index: Int = -1): Pair<View, PosterAdapter> {
         val box = LinearLayout(act).apply {
             orientation = LinearLayout.VERTICAL
             clipChildren = false
@@ -518,7 +548,8 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
         adapter.submit(items)
         rowAdapters.add(adapter)
         box.addView(rv, LinearLayout.LayoutParams(-1, -2))
-        column.addView(box, LinearLayout.LayoutParams(-1, -2))
+        if (index in 0..column.childCount) column.addView(box, index, LinearLayout.LayoutParams(-1, -2))
+        else column.addView(box, LinearLayout.LayoutParams(-1, -2))
         if (hero == null && firstFocusable == null && items.isNotEmpty()) rv.post { firstFocusable = rv.getChildAt(0) }
         Ui.fadeIn(box)
         return box to adapter
