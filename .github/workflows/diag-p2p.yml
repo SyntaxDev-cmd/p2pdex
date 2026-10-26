@@ -11,7 +11,7 @@ on:
 jobs:
   diag:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     env:
       PANEL: https://p2pwmax.dexdown.shop
       U: ${{ secrets.P2P_TEST_USER || 'teste000' }}
@@ -42,5 +42,12 @@ jobs:
                 done
               done
               echo "[raiz /] HTTP $(curl -sS -m 15 -A "$UA" -o /dev/null -w '%{http_code}' "$base/" 2>&1)"
+              # mesmo domínio por HTTPS e caminhos de login comuns
+              hb="https://$host"
+              for path in "/" "/player_api.php?username=$U$suf&password=$P" "/api/auth" "/api/login" "/auth" "/login"; do
+                r=$(curl -sS -m 15 -A "$UA" -o body.txt -w '%{http_code} %{content_type}' "$hb$path" 2>&1)
+                echo "[https ${path%%\?*}] $r | $(head -c 250 body.txt | tr '\n' ' ' | sed "s/$U/USER/g; s/$P/PASS/g")"
+              done
+              echo "[DNS CNAME] $(dig +short "$host" CNAME) [A] $(dig +short "$host" A | tr '\n' ' ')"
             done
           done
