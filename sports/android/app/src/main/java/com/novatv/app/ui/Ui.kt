@@ -234,10 +234,11 @@ object Ui {
 
     // ---------------------------------------------------------- efeitos
 
-    private val interp = DecelerateInterpolator()
+    // tipados como TimeInterpolator: o tipo comum (BaseInterpolator) não existe no Android 5.0
+    private val interp: android.animation.TimeInterpolator = DecelerateInterpolator()
 
     /** Zoom suave + elevação ao receber foco (efeito "TV moderna"). */
-    private val bounce = android.view.animation.OvershootInterpolator(2.2f)
+    private val bounce: android.animation.TimeInterpolator = android.view.animation.OvershootInterpolator(2.2f)
 
     fun focusZoom(v: View, zoom: Float = 1.06f, bouncy: Boolean = false, extra: ((Boolean) -> Unit)? = null) {
         v.setOnFocusChangeListener { view, has ->

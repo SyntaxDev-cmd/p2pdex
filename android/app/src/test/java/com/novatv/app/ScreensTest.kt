@@ -95,7 +95,7 @@ class ScreensTest {
     }
 
     @Test
-    @Config(qualifiers = "television-w960dp-h540dp-land")
+    @Config(qualifiers = "w960dp-h540dp-land-television")
     fun detalheDeFilmeNaTv() = openDetail(Media("10_3", "Terremoto (1974)", Kind.MOVIE, "", "10", ext = "mp4"))
 
     @Test
