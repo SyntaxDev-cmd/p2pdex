@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- imagens trocáveis pelo APK Editor: nunca remover nem renomear -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/app_logo,@drawable/app_background,@drawable/banner,@mipmap/ic_launcher" />

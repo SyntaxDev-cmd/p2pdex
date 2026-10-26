@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="page_pad">14dp</dimen>
+    <dimen name="page_pad_small">8dp</dimen>
+    <dimen name="detail_poster">120dp</dimen>
+    <dimen name="detail_title">22sp</dimen>
+</resources>

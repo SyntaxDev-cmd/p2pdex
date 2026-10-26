@@ -1,0 +1,126 @@
+name: Gerar APK NovaSports
+
+on:
+  push:
+    branches: [main, "claude/**"]
+    paths: ["sports/**", ".github/workflows/build-sports.yml"]
+  workflow_dispatch:
+    inputs:
+      panel_url:
+        description: "URL do painel (ex.: https://seudominio.com/painel). Vazio = usa secret/gradle.properties"
+        required: false
+      panel_key:
+        description: "Chave PANEL_KEY do painel. Vazio = usa secret/gradle.properties"
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: sports/android
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Restaurar keystore (se configurada nos secrets)
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > release.keystore
+            echo "KEYSTORE_FILE=release.keystore" >> "$GITHUB_ENV"
+            echo "Keystore própria encontrada."
+          else
+            echo "::warning::Sem KEYSTORE_BASE64 nos secrets: o APK será assinado com chave de debug (atualizações exigirão desinstalar)."
+          fi
+
+      - name: Compilar APK
+        env:
+          PANEL_URL: ${{ inputs.panel_url || secrets.PANEL_URL }}
+          PANEL_KEY: ${{ inputs.panel_key || secrets.PANEL_KEY }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          VERSION_CODE: ${{ github.run_number }}
+        run: |
+          chmod +x gradlew
+          set -o pipefail
+          if ! ./gradlew assembleFullRelease bundlePlayRelease --no-daemon --stacktrace 2>&1 | tee build.log; then
+            # publica o motivo da falha como anotação (visível no resumo do Actions)
+            msg=$(grep -E -A4 "^e: |error:|What went wrong|AAPT|Could not|Execution failed|Unresolved|> " build.log | grep -v "^\s*at " | head -80 | sed -e 's/%/%25/g' | sed -e ':a;N;$!ba;s/\n/%0A/g')
+            echo "::error title=Falha no build::${msg}"
+            exit 1
+          fi
+          mkdir -p ../../dist
+          cp app/build/outputs/apk/full/release/*.apk "../../dist/NovaSports-v${{ github.run_number }}.apk"
+          mkdir -p ../../dist-latest
+          cp app/build/outputs/apk/full/release/*.apk ../../dist-latest/NovaSports.apk
+          echo "Imagens editáveis dentro do APK:"; unzip -l ../../dist-latest/NovaSports.apk | grep -E "\.(png|jpg|webp)$" || true
+          # pacote do painel para enviar à hospedagem (sem banco de dados e sem uploads)
+          (cd ../../panel && zip -qr ../dist-latest/painel.zip . -x "data/*.sqlite*" "data/dbname.php" "uploads/*")
+          mkdir -p ../../dist-play
+          cp app/build/outputs/bundle/playRelease/*.aab "../../dist-play/NovaSports-play-v${{ github.run_number }}.aab"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NovaSports-apk-${{ github.run_number }}
+          path: dist/*.apk
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NovaSports-playstore-aab-${{ github.run_number }}
+          path: dist-play/*.aab
+          if-no-files-found: warn
+
+      - name: Publicar APK na Release "latest"
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: sports-latest
+          name: "NovaSports - última versão (build ${{ github.run_number }})"
+          make_latest: false
+          body: |
+            APK gerado automaticamente a partir do commit ${{ github.sha }}.
+            Baixe o arquivo **.apk** abaixo e instale no Android / TV Box.
+            Versão interna (versionCode): ${{ github.run_number }} — use esse número em Painel → Sistema → "Última versão" para avisar os clientes.
+            Link fixo (sempre a versão mais nova): https://github.com/${{ github.repository }}/releases/download/sports-latest/NovaSports.apk
+          files: |
+            dist-latest/NovaSports.apk
+            dist-latest/painel.zip
+
+      - name: Publicar APK numa Release com o número da versão
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: sports-v${{ github.run_number }}
+          name: "NovaSports build ${{ github.run_number }}"
+          make_latest: false
+          files: dist/*.apk
+
+      - name: Publicar APK de teste (branches claude/**)
+        if: startsWith(github.ref, 'refs/heads/claude/')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: sports-teste
+          target_commitish: ${{ github.sha }}
+          name: "NovaSports - versão de teste (build ${{ github.run_number }})"
+          prerelease: true
+          make_latest: false
+          body: |
+            APK de teste com as últimas correções (commit ${{ github.sha }}, branch ${{ github.ref_name }}).
+            Link fixo: https://github.com/${{ github.repository }}/releases/download/sports-teste/NovaSports.apk
+          files: |
+            dist-latest/NovaSports.apk
+            dist-latest/painel.zip
