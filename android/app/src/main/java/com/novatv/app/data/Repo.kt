@@ -22,13 +22,8 @@ object Repo {
 
     val config: PanelConfig get() = PanelConfig.current
 
-    fun servers(): List<ServerDef> {
-        val list = config.servers
-        if (list.isNotEmpty()) return list
-        val dns = Prefs.customDns
-        if (dns.isEmpty()) return emptyList()
-        return listOf(ServerDef(0, "Servidor", "xtream", listOf(dns.trimEnd('/')), "", "", "", "ts", "", "", ""))
-    }
+    /** Somente os servidores cadastrados no painel (o cliente nunca digita DNS). */
+    fun servers(): List<ServerDef> = config.servers
 
     fun create(server: ServerDef, user: String, pass: String): Provider =
         if (server.type == "m3u") M3uProvider(server, user, pass)

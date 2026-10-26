@@ -57,14 +57,6 @@
         android:focusable="true"
         android:gravity="center_vertical" />
 
-    <EditText
-        android:id="@+id/dns"
-        style="@style/LoginField"
-        android:drawableStart="@drawable/ic_link"
-        android:hint="DNS do servidor (http://...)"
-        android:imeOptions="actionNext"
-        android:inputType="textUri"
-        android:visibility="gone" />
 
     <EditText
         android:id="@+id/user"

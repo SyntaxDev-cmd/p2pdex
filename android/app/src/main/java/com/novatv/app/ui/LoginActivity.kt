@@ -43,7 +43,6 @@ class LoginActivity : BaseActivity() {
     override val immersiveMode: Boolean get() = Ui.isTv
 
     private lateinit var serverView: TextView
-    private lateinit var dns: EditText
     private lateinit var codeField: EditText
     private lateinit var user: EditText
     private lateinit var pass: EditText
@@ -64,7 +63,6 @@ class LoginActivity : BaseActivity() {
         val cfg = PanelConfig.current
 
         serverView = findViewById(R.id.server)
-        dns = findViewById(R.id.dns)
         codeField = findViewById(R.id.resellerCode)
         user = findViewById(R.id.user)
         pass = findViewById(R.id.pass)
@@ -94,10 +92,12 @@ class LoginActivity : BaseActivity() {
         loginBtn.setOnClickListener { doLogin() }
         passToggle.setOnClickListener { togglePassword() }
         // ao corrigir um campo, o erro some
-        listOf(user, pass, dns).forEach { f -> f.setOnFocusChangeListener { _, has -> if (has) scrollTo(f) } }
+        listOf(user, pass, codeField).forEach { f -> f.setOnFocusChangeListener { _, has -> if (has) scrollTo(f) } }
         intent.getStringExtra("error")?.let { showError(it) }
 
-        (if (dns.visibility == View.VISIBLE && dns.text.isEmpty()) dns else if (user.text.isEmpty()) user else pass).requestFocus()
+        (if (user.text.isEmpty()) user else pass).requestFocus()
+        // sem lista de servidores (painel não respondeu na abertura): tenta de novo em segundo plano
+        if (servers.isEmpty()) launch { reloadServers() }
         animateIn()
     }
 
@@ -117,7 +117,7 @@ class LoginActivity : BaseActivity() {
 
         findViewById<TextView>(R.id.name).apply { text = cfg.appName; setTextColor(Ui.text) }
         findViewById<TextView>(R.id.welcome).apply {
-            text = cfg.welcome.ifBlank { cfg.splashText.ifBlank { "Seu entretenimento em um só lugar." } }
+            text = cfg.welcome.ifBlank { "Seu entretenimento em um só lugar." }
             setTextColor(Ui.text2)
         }
         findViewById<TextView>(R.id.formTitle).setTextColor(Ui.text)
@@ -131,7 +131,7 @@ class LoginActivity : BaseActivity() {
         if (cfg.logo.isNotEmpty()) logos.forEach { it.load(cfg.logo) { error(R.mipmap.ic_launcher) } }
 
         val iconTint = Ui.textColors(Ui.withAlpha(Ui.text, 160), Ui.text)
-        listOf(codeField, dns, user, pass).forEach {
+        listOf(codeField, user, pass).forEach {
             it.background = Ui.inputBg(this)
             it.setTextColor(Ui.text)
             it.setHintTextColor(Ui.withAlpha(Ui.text, 120))
@@ -254,13 +254,9 @@ class LoginActivity : BaseActivity() {
     private fun setupServers(cfg: PanelConfig) {
         servers = Repo.servers()
         selected = servers.indexOfFirst { it.id == Prefs.serverId }.coerceAtLeast(0)
+        // as DNS vêm somente do painel; o cliente nunca digita endereço de servidor
         when {
-            cfg.servers.isEmpty() -> {
-                // sem servidores no painel: cliente informa a DNS
-                serverView.visibility = View.GONE
-                dns.visibility = View.VISIBLE
-                dns.setText(Prefs.customDns)
-            }
+            servers.isEmpty() -> serverView.visibility = View.GONE
             servers.size == 1 || !cfg.allowServerSelect -> serverView.visibility = View.GONE
             else -> {
                 serverView.visibility = View.VISIBLE
@@ -274,6 +270,14 @@ class LoginActivity : BaseActivity() {
                 }
             }
         }
+    }
+
+    /** Busca a configuração do painel de novo. Retorna true se há servidores para entrar. */
+    private suspend fun reloadServers(): Boolean {
+        PanelConfig.refresh()
+        Ui.apply(PanelConfig.current)
+        setupServers(PanelConfig.current)
+        return servers.isNotEmpty()
     }
 
     private fun updateServerLabel() {
@@ -339,24 +343,28 @@ class LoginActivity : BaseActivity() {
             return
         }
         when {
-            dns.visibility == View.VISIBLE && dns.text.isBlank() -> { showError("Informe a DNS do servidor."); dns.requestFocus(); return }
             u.isEmpty() -> { showError("Informe seu usuário."); user.requestFocus(); return }
             p.isEmpty() -> { showError("Informe sua senha."); pass.requestFocus(); return }
         }
-        var list = servers
-        if (dns.visibility == View.VISIBLE) {
-            var d = dns.text.toString().trim().trimEnd('/')
-            if (!d.startsWith("http://") && !d.startsWith("https://")) d = "http://$d"
-            Prefs.customDns = d
-            list = Repo.servers()
-            selected = 0
-        }
-        // se o cliente não escolhe o servidor, tenta um por um (ordem de prioridade do painel)
-        val candidates = if (serverView.visibility == View.VISIBLE || list.size == 1) listOfNotNull(list.getOrNull(selected)) else list
-        if (candidates.isEmpty()) {
-            showError("Nenhum servidor configurado no painel.")
+        if (servers.isEmpty()) {
+            // lista ainda não chegou: busca no painel antes de entrar
+            setBusy(true)
+            launch {
+                val ok = reloadServers()
+                setBusy(false)
+                when {
+                    ok -> doLogin()
+                    PanelConfig.lastError.isNotEmpty() -> showError(PanelConfig.lastError)
+                    Prefs.configJson.isNotEmpty() && PanelConfig.current.servers.isEmpty() ->
+                        showError("Nenhum servidor disponível no momento. Fale com o suporte.")
+                    else -> showError("Não foi possível conectar ao servidor. Verifique sua internet e tente novamente.")
+                }
+            }
             return
         }
+        val list = servers
+        // se o cliente não escolhe o servidor, tenta um por um (ordem de prioridade do painel)
+        val candidates = if (serverView.visibility == View.VISIBLE || list.size == 1) listOfNotNull(list.getOrNull(selected)) else list
         setBusy(true)
         clearError()
         (getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager)?.hideSoftInputFromWindow(pass.windowToken, 0)
@@ -393,6 +401,6 @@ class LoginActivity : BaseActivity() {
         busy = on
         loading.visibility = if (on) View.VISIBLE else View.GONE
         loginBtn.text = if (on) "" else "ENTRAR"
-        listOf(user, pass, dns, serverView, codeField).forEach { it.isEnabled = !on }
+        listOf(user, pass, serverView, codeField).forEach { it.isEnabled = !on }
     }
 }

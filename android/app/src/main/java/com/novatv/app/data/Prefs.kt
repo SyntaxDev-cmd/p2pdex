@@ -61,10 +61,6 @@ object Prefs {
         get() = str("reseller_code")
         set(v) = put("reseller_code", v)
 
-    /** DNS digitada manualmente (quando o painel não tem servidores). */
-    var customDns: String
-        get() = str("custom_dns")
-        set(v) = put("custom_dns", v)
 
     fun logout() {
         sp.edit().remove("user").remove("pass").remove("active_base").apply()
