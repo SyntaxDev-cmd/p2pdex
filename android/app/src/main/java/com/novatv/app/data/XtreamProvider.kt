@@ -55,6 +55,12 @@ class XtreamProvider(
     private val urls: List<String> = server.urls.map { cleanBase(it) }.filter { it.isNotEmpty() }.distinct()
 
     /**
+     * Endereços testados no login: os do painel e, de reserva, o mesmo domínio no outro
+     * protocolo (muitos P2P só funcionam em https:// e o painel salva "dominio.com" como http://).
+     */
+    private val candidates: List<String> = (urls + urls.map { otherScheme(it) }).distinct()
+
+    /**
      * Usuário enviado à API. Com "API Email" (sufixo @dominio) o sufixo é somado ao que o
      * cliente digitou, a não ser que ele já tenha digitado o e-mail completo.
      */
@@ -67,7 +73,7 @@ class XtreamProvider(
     private var usePost = false
 
     @Volatile
-    private var base: String = cleanBase(savedBase).takeIf { it in urls } ?: urls.firstOrNull().orEmpty()
+    private var base: String = cleanBase(savedBase).takeIf { it in candidates } ?: urls.firstOrNull().orEmpty()
     override val activeBase: String get() = base
 
     private fun loginUsers(): List<String> {
@@ -164,7 +170,10 @@ class XtreamProvider(
                 // Cloudflare: "error code: 1014" = domínio do servidor mal configurado/fora do ar
                 val body = runCatching { resp.peekBody(2048).string() }.getOrDefault("")
                 Regex("error code: (\\d{3,4})").find(body)?.let {
-                    throw IOException("o domínio ${Uri.parse(b).host} está fora do ar na Cloudflare (erro ${it.groupValues[1]}). Peça ao fornecedor do P2P o endereço correto da API")
+                    throw IOException("${Uri.parse(b).scheme}://${Uri.parse(b).host} está fora do ar na Cloudflare (erro ${it.groupValues[1]})")
+                }
+                if (body.contains("Just a moment", true) || body.contains("cf-chl", true) || body.contains("challenge-platform", true)) {
+                    throw IOException("a Cloudflare do servidor pediu verificação anti-robô (o dono do servidor precisa liberar o acesso de apps à API)")
                 }
             }
             when {
@@ -188,14 +197,11 @@ class XtreamProvider(
 
     /** Todas as DNS ao mesmo tempo: vence a primeira que autenticar. */
     private suspend fun race(u: String): Triple<String, Account, Boolean> = withContext(Dispatchers.IO) {
-        if (urls.size == 1) {
-            val (acc, post) = attempt(urls[0], u)
-            return@withContext Triple(urls[0], acc, post)
-        }
+
         val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
         val winner = CompletableDeferred<Triple<String, Account, Boolean>>()
         val errors = mutableListOf<Exception>()
-        val jobs: List<Job> = urls.map { b ->
+        val jobs: List<Job> = candidates.map { b ->
             scope.launch {
                 try {
                     val (acc, post) = attempt(b, u)
@@ -203,7 +209,7 @@ class XtreamProvider(
                 } catch (e: Exception) {
                     synchronized(errors) {
                         errors.add(e)
-                        if (errors.size == urls.size) winner.completeExceptionally(bestError(errors))
+                        if (errors.size == candidates.size) winner.completeExceptionally(bestError(errors))
                     }
                 }
             }
@@ -399,7 +405,7 @@ class XtreamProvider(
     private fun enc(s: String) = Uri.encode(s, "@._-")
 
     private fun build(kind: String, id: String, ext: String): String {
-        val b = server.streamBase.ifEmpty { base }
+        val b = streamBase()
         val tpl = server.streamTemplate.ifBlank { "{base}/{kind}/{user}/{pass}/{id}.{ext}" }
         return tpl.replace("{base}", b).replace("{kind}", kind).replace("{user}", enc(apiUser))
             .replace("{pass}", enc(pass)).replace("{id}", id).replace("{ext}", ext)
@@ -416,6 +422,22 @@ class XtreamProvider(
 
     override fun episodeUrl(e: Episode): String =
         e.directUrl.ifEmpty { build("series", e.id, e.ext.ifBlank { "mp4" }) }
+
+    /** Domínio dos vídeos (LIB). Se o login só funcionou em https, o LIB do mesmo domínio também vai em https. */
+    private fun streamBase(): String {
+        val lib = cleanBase(server.streamBase)
+        if (lib.isEmpty()) return base
+        val loginUri = Uri.parse(base)
+        val libUri = Uri.parse(lib)
+        if (loginUri.scheme == "https" && libUri.scheme == "http" && sameSite(loginUri.host, libUri.host)) return otherScheme(lib)
+        return lib
+    }
+
+    private fun sameSite(a: String?, b: String?): Boolean {
+        if (a == null || b == null) return false
+        fun root(h: String) = h.split('.').takeLast(2).joinToString(".")
+        return root(a) == root(b)
+    }
 
     override fun failover(): Boolean {
         if (server.streamBase.isNotEmpty() || urls.size < 2) return false
@@ -435,6 +457,13 @@ class XtreamProvider(
                 if (u.endsWith(tail, true)) u = u.dropLast(tail.length)
             }
             return u.trimEnd('/')
+        }
+
+        /** http://x:80 <-> https://x (porta padrão some na troca). */
+        fun otherScheme(u: String): String = when {
+            u.startsWith("http://", true) -> "https://" + u.substring(7).replace(Regex(":80(?=$|/)"), "")
+            u.startsWith("https://", true) -> "http://" + u.substring(8).replace(Regex(":443(?=$|/)"), "")
+            else -> u
         }
 
         /** Entre vários erros de login, o mais útil para mostrar ao cliente. */
