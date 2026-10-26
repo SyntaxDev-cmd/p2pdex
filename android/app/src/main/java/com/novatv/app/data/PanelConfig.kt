@@ -25,7 +25,7 @@ data class ServerDef(
 
 data class Banner(val title: String, val subtitle: String, val image: String, val action: String, val value: String)
 data class Message(val id: Int, val title: String, val body: String, val popup: Boolean, val date: String)
-data class Tab(val id: String, val label: String, val icon: String = "")
+data class Tab(val id: String, val label: String, val icon: String = "", val iconOnly: Boolean = true)
 
 class PanelConfig(val json: JSONObject) {
     private val app = json.optJSONObject("app") ?: JSONObject()
@@ -65,7 +65,7 @@ class PanelConfig(val json: JSONObject) {
     val scale: Int = theme.optInt("scale", 100)
 
     val tabs: List<Tab> = json.optJSONArray("tabs")?.let { arr ->
-        (0 until arr.length()).mapNotNull { i -> arr.optJSONObject(i)?.let { Tab(it.optString("id"), it.optString("label"), it.optString("icon")) } }
+        (0 until arr.length()).mapNotNull { i -> arr.optJSONObject(i)?.let { Tab(it.optString("id"), it.optString("label"), it.optString("icon"), it.optBoolean("icon_only", true)) } }
     } ?: listOf(Tab("highlights", "INÍCIO"), Tab("tv", "TV"), Tab("sports", "JOGOS"), Tab("movies", "FILMES"),
         Tab("series", "SÉRIES"), Tab("kids", "KIDS"), Tab("anime", "ANIME"), Tab("favorites", "FAVORITOS"))
 

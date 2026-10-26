@@ -171,7 +171,7 @@ class MainActivity : BaseActivity() {
                     if (ev.action == KeyEvent.ACTION_DOWN && code == KeyEvent.KEYCODE_DPAD_DOWN) current?.focusContent() ?: false else false
                 }
             }
-            if (t.icon.isNotBlank()) loadTabIcon(tv, t.icon)
+            if (t.icon.isNotBlank()) loadTabIcon(tv, t.icon, t.iconOnly)
             val isKids = t.id == "kids"
             Ui.focusZoom(tv, 1.08f) { has ->
                 if (isKids) rainbow(tv, !has)
@@ -255,24 +255,41 @@ class MainActivity : BaseActivity() {
         (pagesContainer.parent as LinearLayout).addView(bar, LinearLayout.LayoutParams(-1, -2))
     }
 
-    /** Ícone da aba enviado no painel (PNG 128x128), mostrado com 24dp ao lado do nome. */
-    private fun loadTabIcon(tv: TextView, url: String) {
-        val size = Ui.dp(this, 22)
+    /**
+     * Ícone/logotipo da aba enviado no painel. Mostrado nas cores originais (sem pintar),
+     * com 28dp de altura e a largura proporcional. Com "só o ícone" ligado no painel,
+     * a imagem substitui o nome da aba (o nome continua como fallback se a imagem falhar).
+     */
+    private fun loadTabIcon(tv: TextView, url: String, iconOnly: Boolean) {
+        val h = Ui.dp(this, 28)
+        val maxW = Ui.dp(this, 150)
         val req = coil.request.ImageRequest.Builder(this)
             .data(url)
-            .size(size * 2, size * 2)
+            .size(maxW * 2, h * 2)
+            .allowHardware(false)
             .target(onSuccess = { d ->
-                d.setBounds(0, 0, size, size)
-                tv.compoundDrawablePadding = Ui.dp(this, 8)
+                val iw = d.intrinsicWidth.takeIf { it > 0 } ?: h
+                val ih = d.intrinsicHeight.takeIf { it > 0 } ?: h
+                val w = (iw.toFloat() * h / ih).toInt().coerceIn(h / 2, maxW)
+                d.setBounds(0, 0, w, h)
+                if (android.os.Build.VERSION.SDK_INT >= 23) tv.compoundDrawableTintList = null
+                if (iconOnly) {
+                    tv.contentDescription = tv.text
+                    tv.text = ""
+                    tv.paint.shader = null
+                    tv.compoundDrawablePadding = 0
+                    tv.minHeight = h + Ui.dp(this, 14)
+                } else {
+                    tv.compoundDrawablePadding = Ui.dp(this, 8)
+                }
                 tv.setCompoundDrawablesRelative(d, null, null, null)
-                if (android.os.Build.VERSION.SDK_INT >= 23) tv.compoundDrawableTintList = Ui.textColors(Ui.text, Ui.focusText)
             })
             .build()
         coil.Coil.imageLoader(this).enqueue(req)
     }
 
     private fun rainbow(tv: TextView, on: Boolean) {
-        if (!on || tv.width == 0) {
+        if (!on || tv.width == 0 || tv.text.isEmpty()) {
             tv.paint.shader = null
             tv.invalidate()
             return

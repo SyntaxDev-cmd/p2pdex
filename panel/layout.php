@@ -24,6 +24,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $save['start_tab'] = isset($tabs[$start]) ? $start : 'tv';
     if ($save['tab_' . $save['start_tab']] !== '1') $save['tab_' . $save['start_tab']] = '1';
     $save['home_mosaic'] = !empty($_POST['home_mosaic']) ? '1' : '0';
+    $save['tab_icon_only'] = !empty($_POST['tab_icon_only']) ? '1' : '0';
     save_settings($save);
     audit('abas_salvas');
     foreach ($errors as $er) flash($er, 'err');
@@ -45,7 +46,7 @@ require __DIR__ . '/inc/header.php';
     <div class="tab-row">
       <div class="tab-preview">
         <?php if ($icon): ?><img src="<?= e(asset_url($icon)) ?>" alt=""><?php else: ?><span class="noicon">sem ícone</span><?php endif; ?>
-        <b><?= e($s['label_' . $k]) ?></b>
+        <?php if (!$icon || $s['tab_icon_only'] !== '1'): ?><b><?= e($s['label_' . $k]) ?></b><?php endif; ?>
       </div>
       <div class="field"><label><?= e($label) ?></label><input type="text" name="label_<?= $k ?>" value="<?= e($s['label_' . $k]) ?>" maxlength="20"></div>
       <div class="field"><label>Ícone (opcional)</label><input type="file" name="icon_<?= $k ?>" accept="image/png,image/webp">
@@ -57,9 +58,11 @@ require __DIR__ . '/inc/header.php';
     </div>
     <?php endforeach; ?>
   </div>
+  <label class="switch" style="margin-top:14px"><input type="checkbox" name="tab_icon_only" value="1" <?= $s['tab_icon_only'] === '1' ? 'checked' : '' ?>> Quando a aba tiver ícone, mostrar <b>só a imagem</b> (sem o nome)</label>
   <div class="alert warn" style="margin-top:14px">
-    <b>Tamanho ideal dos ícones:</b> PNG com fundo transparente, <b>128 × 128 px</b> (mínimo 96 × 96), desenho centralizado com ~10% de margem.
-    Prefira ícones brancos ou de uma cor só — o app mostra com 24dp ao lado do nome da aba e destaca quando a aba recebe o foco.
+    <b>Tamanho ideal das imagens das abas:</b> PNG com fundo transparente e <b>96 px de altura</b>.
+    Ícone quadrado: <b>96 × 96 px</b>. Logotipo/escrita (ex.: “KIDS” colorido): <b>até 360 × 96 px</b>.
+    A imagem aparece <b>nas cores originais</b>, com 28dp de altura e largura proporcional; deixe ~8% de margem para não encostar na borda da pílula de foco.
   </div>
 </div>
 <div class="card">

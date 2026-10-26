@@ -107,7 +107,7 @@ try {
 
     $tabs = [];
     foreach (['highlights', 'tv', 'sports', 'movies', 'series', 'kids', 'anime', 'favorites'] as $t) {
-        if ($s['tab_' . $t] === '1') $tabs[] = ['id' => $t, 'label' => $s['label_' . $t], 'icon' => asset_url($s['icon_' . $t] ?? '')];
+        if ($s['tab_' . $t] === '1') $tabs[] = ['id' => $t, 'label' => $s['label_' . $t], 'icon' => asset_url($s['icon_' . $t] ?? ''), 'icon_only' => ($s['tab_icon_only'] ?? '1') === '1'];
     }
 
     $banners = [];

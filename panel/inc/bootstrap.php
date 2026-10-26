@@ -255,6 +255,7 @@ function default_settings(): array
         'icon_tv' => '', 'icon_sports' => '', 'icon_highlights' => '', 'icon_movies' => '',
         'icon_series' => '', 'icon_kids' => '', 'icon_anime' => '', 'icon_favorites' => '',
         'home_mosaic' => '1',
+        'tab_icon_only' => '1',
         // Kids / Anime / Adulto
         'kids_keywords' => 'kids, infantil, infantis, criança, crianca, desenho, desenhos, cartoon, disney, nick, nickelodeon, discovery kids, gloob, cartoonito, animação, animacao, family, família, familia',
         'sports_keywords' => 'esporte, esportes, sport, sports, futebol, premiere, espn, sportv, combate, ufc, nba, nfl, f1, formula, brasileirão, brasileirao, libertadores, champions, copa',
