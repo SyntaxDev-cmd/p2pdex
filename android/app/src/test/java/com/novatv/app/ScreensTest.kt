@@ -144,6 +144,64 @@ class ScreensTest {
     }
 
     @Test
+    fun playerCanalAoVivo() {
+        com.novatv.app.ui.PlayQueue.live(listOf(Media("30_1", "Canal Teste HD", Kind.LIVE, "", "30"), Media("30_2", "Canal 2", Kind.LIVE, "", "30")), 0)
+        val c = Robolectric.buildActivity(com.novatv.app.ui.PlayerActivity::class.java).setup()
+        settle()
+        assertFalse("o player fechou sozinho", c.get().isFinishing)
+        // troca de canal pelo controle
+        c.get().dispatchKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DPAD_UP))
+        settle()
+        c.get().dispatchKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DPAD_CENTER))
+        settle()
+        assertFalse("o player fechou ao trocar de canal", c.get().isFinishing)
+        c.pause().stop().destroy()
+    }
+
+    @Test
+    fun playerFilme() {
+        com.novatv.app.ui.PlayQueue.set(listOf(com.novatv.app.ui.PlayQueue.Entry("Filme", "2025", Kind.MOVIE, "",
+            Media("10_1", "Filme", Kind.MOVIE, "", "10", ext = "mp4"))), 0)
+        val c = Robolectric.buildActivity(com.novatv.app.ui.PlayerActivity::class.java).setup()
+        settle()
+        assertFalse("o player de filme fechou sozinho", c.get().isFinishing)
+        c.pause().stop().destroy()
+    }
+
+    @Test
+    fun abaTvTocarCanal() {
+        val c = Robolectric.buildActivity(MainActivity::class.java).setup()
+        settle()
+        val act = c.get()
+        act.switchTab("tv")
+        settle()
+        val lists = findAll(act.pagesContainer).filterIsInstance<androidx.recyclerview.widget.RecyclerView>()
+        lists.forEach { rv ->
+            rv.measure(android.view.View.MeasureSpec.makeMeasureSpec(600, android.view.View.MeasureSpec.EXACTLY), android.view.View.MeasureSpec.makeMeasureSpec(800, android.view.View.MeasureSpec.EXACTLY))
+            rv.layout(0, 0, 600, 800)
+        }
+        idle()
+        // categoria e depois o canal (1º toque = prévia, 2º = tela cheia)
+        lists.forEach { rv -> rv.getChildAt(0)?.performClick(); settle() }
+        lists.forEach { rv -> rv.getChildAt(0)?.performClick(); settle() }
+        assertFalse(act.isFinishing)
+        c.pause().stop().destroy()
+    }
+
+    @Test
+    fun abaKidsMostraCanais() {
+        val c = Robolectric.buildActivity(MainActivity::class.java).setup()
+        settle()
+        val act = c.get()
+        act.switchTab("kids")
+        settle()
+        val names = findAll(act.pagesContainer).filterIsInstance<android.widget.TextView>().map { it.text.toString() }
+        org.junit.Assert.assertTrue("Kids puxou categoria de esporte: $names", names.none { it.contains("DISNEY+ • MAX") })
+        assertFalse(act.isFinishing)
+        c.pause().stop().destroy()
+    }
+
+    @Test
     fun abasPrincipais() {
         val c = Robolectric.buildActivity(MainActivity::class.java).setup()
         idle()
