@@ -52,7 +52,7 @@ class FakeProvider : Provider {
 }
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34], application = App::class)
+@Config(sdk = [21, 25, 28, 30, 34], application = App::class, qualifiers = "w960dp-h540dp-land")
 class ScreensTest {
 
     @Before
@@ -93,6 +93,14 @@ class ScreensTest {
         openDetail(Media("10_2", "Vítimas do Dia (2025)", Kind.MOVIE, "", "10", ext = "mp4"))
         c.destroy()
     }
+
+    @Test
+    @Config(qualifiers = "television-w960dp-h540dp-land")
+    fun detalheDeFilmeNaTv() = openDetail(Media("10_3", "Terremoto (1974)", Kind.MOVIE, "", "10", ext = "mp4"))
+
+    @Test
+    @Config(qualifiers = "w411dp-h891dp-port")
+    fun detalheDeFilmeNoCelular() = openDetail(Media("10_4", "Lutador de Rua (2009)", Kind.MOVIE, "", "10", ext = "mp4"))
 
     @Test
     fun abasPrincipais() {
