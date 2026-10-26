@@ -176,6 +176,17 @@ function migrate(PDO $pdo): void
             hits INTEGER NOT NULL DEFAULT 1,
             PRIMARY KEY (ip, minute)
         );
+        CREATE TABLE IF NOT EXISTS app_errors (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            device_id TEXT NOT NULL DEFAULT '',
+            model TEXT NOT NULL DEFAULT '',
+            android TEXT NOT NULL DEFAULT '',
+            app_version TEXT NOT NULL DEFAULT '',
+            summary TEXT NOT NULL DEFAULT '',
+            trace TEXT NOT NULL DEFAULT '',
+            ip TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+        );
         CREATE TABLE IF NOT EXISTS audit_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             who TEXT NOT NULL,
@@ -232,15 +243,15 @@ function default_settings(): array
         'corner_radius' => '12',
         'ui_scale' => '100',
         // Abas
+        'tab_highlights' => '1', 'label_highlights' => 'INÍCIO',
         'tab_tv' => '1', 'label_tv' => 'TV',
         'tab_sports' => '1', 'label_sports' => 'JOGOS',
-        'tab_highlights' => '1', 'label_highlights' => 'DESTAQUES',
         'tab_movies' => '1', 'label_movies' => 'FILMES',
         'tab_series' => '1', 'label_series' => 'SÉRIES',
         'tab_kids' => '1', 'label_kids' => 'KIDS',
         'tab_anime' => '1', 'label_anime' => 'ANIME',
         'tab_favorites' => '1', 'label_favorites' => 'FAVORITOS',
-        'start_tab' => 'tv',
+        'start_tab' => 'highlights',
         'icon_tv' => '', 'icon_sports' => '', 'icon_highlights' => '', 'icon_movies' => '',
         'icon_series' => '', 'icon_kids' => '', 'icon_anime' => '', 'icon_favorites' => '',
         'home_mosaic' => '1',

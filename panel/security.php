@@ -18,6 +18,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $pdo->exec('DELETE FROM login_attempts');
         audit('desbloqueio_logins');
         flash('Bloqueios de login liberados.');
+    } elseif ($op === 'clear_errors') {
+        $pdo->exec('DELETE FROM app_errors');
+        flash('Relatórios de erro apagados.');
     } elseif ($op === 'clear_log') {
         $pdo->exec("DELETE FROM audit_log WHERE created_at < datetime('now','localtime','-30 days')");
         flash('Registros com mais de 30 dias apagados.');
@@ -28,6 +31,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $s = settings();
 $blocked = $pdo->query("SELECT ip, COUNT(*) n, MAX(ts) last FROM login_attempts WHERE ts > " . (time() - 900) . " GROUP BY ip HAVING n >= 3 ORDER BY n DESC LIMIT 20")->fetchAll();
 $log = $pdo->query('SELECT * FROM audit_log ORDER BY id DESC LIMIT 150')->fetchAll();
+$errors = $pdo->query('SELECT * FROM app_errors ORDER BY id DESC LIMIT 50')->fetchAll();
 
 // checagens rápidas do ambiente
 $checks = [
@@ -83,6 +87,20 @@ require __DIR__ . '/inc/header.php';
 </div>
 <div class="row" style="margin-bottom:18px">
   <form method="post"><?= csrf_field() ?><input type="hidden" name="op" value="unblock"><button class="btn small ghost" data-confirm="Liberar todos os IPs bloqueados no login?">Liberar bloqueios de login</button></form>
+</div>
+
+<div class="card" id="erros">
+  <div class="row" style="justify-content:space-between"><h2 style="margin:0">🐞 Erros do app (fechamentos inesperados)</h2>
+    <?php if ($errors): ?><form method="post"><?= csrf_field() ?><input type="hidden" name="op" value="clear_errors"><button class="btn small ghost">Apagar todos</button></form><?php endif; ?></div>
+  <p class="hint">Quando o app fecha sozinho em algum aparelho, ele envia o motivo aqui na próxima abertura. Copie o detalhe e envie para o desenvolvedor.</p>
+  <?php if (!$errors): ?><div class="empty">Nenhum erro recebido. 🎉</div><?php else: ?>
+    <?php foreach ($errors as $er): ?>
+      <details class="errrow">
+        <summary><b><?= e($er['created_at']) ?></b> · <?= e($er['model']) ?> · Android <?= e($er['android']) ?> · app <?= e($er['app_version']) ?><br><span class="mono hint"><?= e($er['summary']) ?></span></summary>
+        <pre class="result copy" data-copy><?= e($er['trace']) ?></pre>
+      </details>
+    <?php endforeach; ?>
+  <?php endif; ?>
 </div>
 
 <div class="card">

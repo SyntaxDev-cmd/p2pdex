@@ -73,7 +73,9 @@ object Games {
      * Procura na lista ao vivo os canais citados no jogo. Ordena pelo nome mais parecido e
      * prefere versões HD/FHD. Retorna (nome do canal do jogo, canais encontrados).
      */
-    suspend fun matchChannels(game: Game): List<Media> {
+    suspend fun matchChannels(game: Game): List<Media> = withContext(Dispatchers.Default) { match(game) }
+
+    private suspend fun match(game: Game): List<Media> {
         if (game.channels.isEmpty()) return emptyList()
         val lives = Repo.liveIndex()
         val out = LinkedHashMap<String, Pair<Int, Media>>()

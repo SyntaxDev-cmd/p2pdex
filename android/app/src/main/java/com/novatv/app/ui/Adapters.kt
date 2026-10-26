@@ -32,6 +32,8 @@ class CategoryAdapter(
         private set
     /** Mostra ícone do tipo (aba Kids mistura canais/filmes/séries). */
     var showKind = false
+    /** Seção temática (Kids/Anime): cada categoria ganha uma cor da paleta. */
+    var section: SectionStyle? = null
 
     @SuppressLint("NotifyDataSetChanged")
     fun submit(list: List<Category>, sel: Int) {
@@ -84,6 +86,19 @@ class CategoryAdapter(
         val c = items[position]
         h.name.text = c.name
         h.itemView.isSelected = position == selected
+        section?.let { st ->
+            val ctx = h.itemView.context
+            val color = st.palette[position % st.palette.size]
+            val r = Ui.dp(ctx, if (st.id == "kids") 22 else 14).toFloat()
+            h.itemView.background = android.graphics.drawable.StateListDrawable().apply {
+                addState(intArrayOf(android.R.attr.state_focused), Ui.rounded(color, r, Color.WHITE, Ui.dp(ctx, 2)))
+                addState(intArrayOf(android.R.attr.state_selected), Ui.rounded(Ui.withAlpha(color, 215), r))
+                addState(intArrayOf(), Ui.rounded(Ui.withAlpha(color, 55), r))
+            }
+            h.name.setTextColor(Color.WHITE)
+            h.icon.imageTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
+            if (st.id == "kids") h.name.typeface = android.graphics.Typeface.DEFAULT_BOLD
+        }
         h.lock.visibility = if (c.locked) View.VISIBLE else View.GONE
         val icon = when {
             c.special == "fav" -> R.drawable.ic_heart
@@ -210,6 +225,8 @@ class PosterAdapter(
     var items: List<PosterItem> = emptyList()
         private set
     private var favKeys: Set<String> = Prefs.favorites().map { it.key }.toSet()
+    /** Seção temática: moldura colorida e foco "elástico" (Kids). */
+    var section: SectionStyle? = null
 
     @SuppressLint("NotifyDataSetChanged")
     fun submit(list: List<PosterItem>) {
@@ -252,7 +269,7 @@ class PosterAdapter(
             setColor(Ui.withAlpha(Color.BLACK, 170))
         }
         h.fav.imageTintList = android.content.res.ColorStateList.valueOf(Ui.fav)
-        Ui.focusZoom(v, 1.08f)
+        Ui.focusZoom(v, if (section?.id == "kids") 1.12f else 1.08f, bouncy = section?.id == "kids")
         v.setOnClickListener {
             val p = h.bindingAdapterPosition
             if (p != RecyclerView.NO_POSITION) onClick(p, items[p])
@@ -287,6 +304,19 @@ class PosterAdapter(
         h.progress.visibility = if (it.progress >= 0) View.VISIBLE else View.GONE
         if (it.progress >= 0) h.progress.progress = it.progress
         h.fav.visibility = if (it.media != null && it.media.key in favKeys) View.VISIBLE else View.GONE
+        section?.let { st ->
+            val ctx = h.itemView.context
+            val color = st.palette[position % st.palette.size]
+            val r = Ui.radius(ctx) * (if (st.id == "kids") 1.6f else 1f)
+            h.focusFrame.background = android.graphics.drawable.StateListDrawable().apply {
+                addState(intArrayOf(android.R.attr.state_focused), Ui.rounded(Color.TRANSPARENT, r, st.accent, Ui.dp(ctx, 4)))
+                addState(intArrayOf(), Ui.rounded(Color.TRANSPARENT, r, Ui.withAlpha(color, 230), Ui.dp(ctx, if (st.id == "kids") 3 else 2)))
+            }
+            if (st.id == "kids") {
+                h.frame.background = Ui.rounded(Ui.withAlpha(color, 120), r)
+                Ui.clipRounded(h.frame, r)
+            }
+        }
     }
 
     override fun getItemCount() = items.size

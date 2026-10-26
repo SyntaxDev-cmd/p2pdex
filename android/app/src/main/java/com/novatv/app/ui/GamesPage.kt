@@ -152,12 +152,13 @@ class GamesPage(act: MainActivity, id: String) : Page(act, id) {
             isSelected = selected
             setPadding(Ui.dp(act, 16), Ui.dp(act, 8), Ui.dp(act, 16), Ui.dp(act, 8))
             val r = Ui.dp(act, 40).toFloat()
+            val st = Sections.sports
             background = android.graphics.drawable.StateListDrawable().apply {
-                addState(intArrayOf(android.R.attr.state_focused), Ui.rounded(Ui.accent, r))
-                addState(intArrayOf(android.R.attr.state_selected), Ui.rounded(Ui.primary, r))
+                addState(intArrayOf(android.R.attr.state_focused), Ui.rounded(st.accent, r))
+                addState(intArrayOf(android.R.attr.state_selected), Ui.rounded(st.palette[0], r))
                 addState(intArrayOf(), Ui.rounded(Ui.surface, r, Ui.withAlpha(Color.WHITE, 40), Ui.dp(act, 1)))
             }
-            setTextColor(Ui.textColors(if (dot != 0 && !selected) dot else Ui.text, Ui.focusText))
+            setTextColor(Ui.textColors(if (dot != 0 && !selected) dot else Color.WHITE, Sections.sports.focusText))
             setOnClickListener { select(key) }
         }
         Ui.focusZoom(tv, 1.06f)
@@ -248,18 +249,19 @@ class GamesPage(act: MainActivity, id: String) : Page(act, id) {
             val v = LayoutInflater.from(act).inflate(R.layout.item_game, parent, false)
             val h = VH(v)
             val r = Ui.radius(act) * 1.2f
+            // cartão "placar": vidro escuro com brilho verde de gramado
             h.body.background = GradientDrawable(GradientDrawable.Orientation.TL_BR,
-                intArrayOf(Ui.withAlpha(Ui.surfaceSolid, 210), Ui.withAlpha(Ui.primary, 70))).apply {
+                intArrayOf(Color.argb(215, 4, 30, 14), Color.argb(200, 9, 70, 35))).apply {
                 cornerRadius = r
-                setStroke(Ui.dp(act, 1), Ui.withAlpha(Color.WHITE, 28))
+                setStroke(Ui.dp(act, 1), Color.argb(70, 182, 255, 59))
             }
-            h.focusFrame.background = Ui.posterFrame(act)
-            h.time.setTextColor(Ui.text)
-            h.league.setTextColor(Ui.text2)
-            h.home.setTextColor(Ui.text)
-            h.away.setTextColor(Ui.text)
-            h.versus.setTextColor(Ui.withAlpha(Ui.text, 150))
-            h.channels.setTextColor(Ui.text)
+            h.focusFrame.background = Ui.posterFrame(act, Sections.sports.accent)
+            h.time.setTextColor(Sections.sports.accent)
+            h.league.setTextColor(Color.argb(200, 220, 255, 220))
+            h.home.setTextColor(Color.WHITE)
+            h.away.setTextColor(Color.WHITE)
+            h.versus.setTextColor(Color.argb(170, 255, 255, 255))
+            h.channels.setTextColor(Color.WHITE)
             Ui.focusZoom(v, 1.04f)
             v.setOnClickListener {
                 val p = h.bindingAdapterPosition

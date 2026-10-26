@@ -115,7 +115,15 @@ class LoginActivity : BaseActivity() {
         glow(findViewById(R.id.glow1), Ui.primary)
         glow(findViewById(R.id.glow2), Ui.withAlpha(Ui.accent, 255).takeIf { Ui.accent != Color.WHITE } ?: Ui.bg1)
 
-        findViewById<TextView>(R.id.name).apply { text = cfg.appName; setTextColor(Ui.text) }
+        findViewById<TextView>(R.id.name).apply {
+            text = cfg.appName
+            setTextColor(Ui.text)
+            // com logo cadastrada aparece só a logo
+            visibility = if (cfg.logo.isNotEmpty()) View.GONE else View.VISIBLE
+        }
+        if (cfg.logo.isNotEmpty()) findViewById<ImageView>(R.id.logo).apply {
+            layoutParams = layoutParams.apply { height = Ui.dp(this@LoginActivity, 110) }
+        }
         findViewById<TextView>(R.id.welcome).apply {
             text = cfg.welcome.ifBlank { "Seu entretenimento em um só lugar." }
             setTextColor(Ui.text2)

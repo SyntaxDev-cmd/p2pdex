@@ -126,7 +126,11 @@ class LivePage(act: MainActivity, id: String, private val mode: String) : Page(a
         chList.itemAnimator = null
         chList.setHasFixedSize(true)
         chList.setItemViewCacheSize(20)
-        if (mode == "sports") chHeader.text = "Jogos ao vivo"
+        if (mode == "sports") {
+            chHeader.text = "Canais esportivos"
+            chHeader.background = Ui.rounded(Sections.sports.palette[0], Ui.radius(act) * 0.8f)
+            view.findViewById<TextView>(R.id.catHeader)?.background = Ui.rounded(Sections.sports.palette[0], Ui.radius(act) * 0.8f)
+        }
     }
 
     override fun onShow() {

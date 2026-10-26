@@ -198,11 +198,13 @@ object Ui {
     private val interp = DecelerateInterpolator()
 
     /** Zoom suave + elevação ao receber foco (efeito "TV moderna"). */
-    fun focusZoom(v: View, zoom: Float = 1.06f, extra: ((Boolean) -> Unit)? = null) {
+    private val bounce = android.view.animation.OvershootInterpolator(2.2f)
+
+    fun focusZoom(v: View, zoom: Float = 1.06f, bouncy: Boolean = false, extra: ((Boolean) -> Unit)? = null) {
         v.setOnFocusChangeListener { view, has ->
             val s = if (has) zoom else 1f
             view.animate().scaleX(s).scaleY(s).translationZ(if (has) dp(view.context, 8).toFloat() else 0f)
-                .setDuration(160).setInterpolator(interp).start()
+                .setDuration(if (bouncy && has) 260 else 160).setInterpolator(if (bouncy && has) bounce else interp).start()
             extra?.invoke(has)
         }
     }

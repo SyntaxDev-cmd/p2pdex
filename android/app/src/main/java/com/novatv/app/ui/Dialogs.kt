@@ -34,7 +34,7 @@ object Dialogs {
         cancelable: Boolean = true,
         onShow: ((Dialog) -> Unit)? = null,
     ): Dialog? {
-        if (act.isFinishing) return null
+        if (act.isFinishing || act.isDestroyed) return null
         val d = Dialog(act)
         d.requestWindowFeature(Window.FEATURE_NO_TITLE)
         d.setCancelable(cancelable)
@@ -100,7 +100,14 @@ object Dialogs {
             box.findViewWithTag<View>("primary")?.requestFocus()
             onShow?.invoke(d)
         }
-        d.show()
+        // tela fechando no meio da ação (TV Box lenta): ignora em vez de derrubar o app
+        try {
+            d.show()
+        } catch (e: android.view.WindowManager.BadTokenException) {
+            return null
+        } catch (e: IllegalStateException) {
+            return null
+        }
         return d
     }
 
@@ -129,7 +136,7 @@ object Dialogs {
         }
 
     fun toast(act: Activity, msg: String) {
-        if (!act.isFinishing) Toast.makeText(act, msg, Toast.LENGTH_SHORT).show()
+        if (!act.isFinishing && !act.isDestroyed) Toast.makeText(act.applicationContext, msg, Toast.LENGTH_SHORT).show()
     }
 
     fun input(act: Activity, hint: String, numeric: Boolean = false, password: Boolean = false, max: Int = 64): EditText =

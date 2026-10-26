@@ -28,7 +28,8 @@ class GridPage(act: MainActivity, id: String, private val mode: String) : Page(a
     private val loading: ProgressBar = view.findViewById(R.id.loading)
     private val empty: TextView = view.findViewById(R.id.empty)
     private val kids = mode == "kids"
-    private val accent = if (kids) Ui.kids else Ui.accent
+    private val section: SectionStyle? = Sections.of(mode)
+    private val accent = section?.accent ?: Ui.accent
 
     private val cats = CategoryAdapter(portrait, ::onCategory, onRight = {
         (current?.special == "home" && homeView?.focus() == true) || focusGrid()
@@ -57,7 +58,19 @@ class GridPage(act: MainActivity, id: String, private val mode: String) : Page(a
             "favorites" -> "♥ Favoritos"
             else -> "Filmes"
         }
-        if (kids) headerView?.background = Ui.rounded(Ui.kids, Ui.radius(act) * 0.8f)
+        section?.let { st ->
+            // cabeçalho e painel no tema da seção
+            headerView?.text = st.title
+            headerView?.background = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,
+                intArrayOf(st.palette[0], st.palette[st.palette.size / 2]),
+            ).apply { cornerRadius = Ui.radius(act) * (if (st.id == "kids") 1.6f else 0.8f) }
+            headerView?.textSize = if (st.id == "kids") 18f else 16f
+            view.findViewById<View>(R.id.catPanel)?.background = Ui.rounded(Ui.withAlpha(android.graphics.Color.BLACK, 70), Ui.radius(act) * 1.4f)
+            cats.section = st
+            posters.section = st
+            empty.setTextColor(android.graphics.Color.WHITE)
+        }
         empty.setTextColor(Ui.text2)
         cats.showKind = kids || mode == "anime" || mode == "favorites"
         catList.layoutManager = LinearLayoutManager(act, if (portrait) RecyclerView.HORIZONTAL else RecyclerView.VERTICAL, false)

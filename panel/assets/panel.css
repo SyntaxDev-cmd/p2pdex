@@ -83,7 +83,7 @@ th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;le
   border:6px solid #0b0b0b;box-shadow:0 20px 50px #0008;font-size:clamp(7px,1.05vw,12px);display:flex;flex-direction:column}
 .tv .tbar{display:flex;align-items:center;padding:3% 4% 1%;gap:2%}
 .tv .tlogo{display:flex;align-items:center;gap:6px;font-weight:700;font-size:1.25em}
-.tv .tlogo img{height:2.2em;max-width:7em;object-fit:contain}
+.tv .tlogo img{height:2.6em;max-width:9em;object-fit:contain}
 .tv .ticons{margin-left:auto;display:flex;gap:6px;align-items:center}
 .tv .ticons i{width:1.9em;height:1.9em;border-radius:50%;background:var(--s);display:inline-block;border:1px solid #ffffff22}
 .tv .ttabs{display:flex;gap:5%;padding:1% 4%;font-weight:700;align-items:center;white-space:nowrap;overflow:hidden}
@@ -185,3 +185,5 @@ tr.muted td{opacity:.55}
   .card{padding:16px}
   input,select,textarea{font-size:16px}
 }
+.errrow{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-top:10px;background:#0f131b}
+.errrow summary{cursor:pointer;font-size:14px;line-height:1.6}

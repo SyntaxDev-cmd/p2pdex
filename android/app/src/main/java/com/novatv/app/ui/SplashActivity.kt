@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.view.View
 import android.widget.ImageView
 import android.widget.ProgressBar
 import android.widget.TextView
@@ -40,17 +41,24 @@ class SplashActivity : BaseActivity() {
         applyBackground(findViewById(R.id.bg))
         val name = findViewById<TextView>(R.id.name)
         name.text = cfg.appName
+        // com logo cadastrada: só a logo, maior
+        name.visibility = if (cfg.logo.isNotEmpty()) View.GONE else View.VISIBLE
         name.setTextColor(Ui.text)
         status.setTextColor(Ui.text2)
         status.text = cfg.splashText.ifBlank { "Carregando..." }
         findViewById<ProgressBar>(R.id.progress).indeterminateTintList = android.content.res.ColorStateList.valueOf(Ui.accent)
         val logo = findViewById<ImageView>(R.id.logo)
-        if (cfg.logo.isNotEmpty()) logo.load(cfg.logo) { error(R.mipmap.ic_launcher) }
+        if (cfg.logo.isNotEmpty()) {
+            logo.layoutParams = logo.layoutParams.apply { height = Ui.dp(this@SplashActivity, 140) }
+            logo.load(cfg.logo) { error(R.mipmap.ic_launcher) }
+        }
     }
 
     private fun start() {
         launch {
             val online = PanelConfig.refresh()
+            // relatório do último fechamento inesperado (se houver) vai para o painel
+            launch { com.novatv.app.data.CrashReporter.sendPending(applicationContext) }
             Ui.apply(PanelConfig.current)
             paint()
             val cfg = PanelConfig.current

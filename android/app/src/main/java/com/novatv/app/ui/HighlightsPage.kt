@@ -513,7 +513,6 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
             clipToPadding = false
             clipChildren = false
             setPadding(Ui.dp(act, 4), Ui.dp(act, 4), Ui.dp(act, 24), Ui.dp(act, 8))
-            setHasFixedSize(true)
             isHorizontalScrollBarEnabled = false
         }
         adapter.submit(items)

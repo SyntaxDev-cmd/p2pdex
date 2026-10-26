@@ -46,6 +46,7 @@ class MainActivity : BaseActivity() {
     private val pages = HashMap<String, Page>()
     private val tabViews = LinkedHashMap<String, TextView>()
     private val bottomViews = LinkedHashMap<String, View>()
+    private lateinit var backdrop: SectionBackdrop
     private var current: Page? = null
     private var currentTab = ""
     private var tabJob: Job? = null
@@ -63,6 +64,9 @@ class MainActivity : BaseActivity() {
         setContentView(R.layout.activity_main)
         applyBackground(findViewById(R.id.bg))
         pagesContainer = findViewById(R.id.pages)
+        // fundo ilustrado das seções (Kids, Jogos, Anime), atrás do conteúdo
+        backdrop = SectionBackdrop(this).apply { alpha = 0f }
+        (findViewById<View>(R.id.bg).parent as FrameLayout).addView(backdrop, 2, FrameLayout.LayoutParams(-1, -1))
         tabsBox = findViewById(R.id.tabs)
         tabsScroll = findViewById(R.id.tabsScroll)
         clock = findViewById(R.id.clock)
@@ -94,9 +98,15 @@ class MainActivity : BaseActivity() {
         val name = findViewById<TextView>(R.id.appName)
         name.text = cfg.appName
         name.setTextColor(Ui.text)
+        // com logo cadastrada aparece só a logo (sem o nome ao lado)
         if (cfg.logo.isNotEmpty()) {
+            name.visibility = View.INVISIBLE
+            logo.layoutParams = logo.layoutParams.apply { height = Ui.dp(this@MainActivity, 40) }
             logo.load(cfg.logo) {
-                listener(onSuccess = { _, _ -> name.visibility = View.GONE }, onError = { _, _ -> logo.setImageResource(R.mipmap.ic_launcher) })
+                listener(onError = { _, _ ->
+                    logo.setImageResource(R.mipmap.ic_launcher)
+                    name.visibility = View.VISIBLE
+                })
             }
         } else {
             logo.setImageResource(R.mipmap.ic_launcher)
@@ -312,12 +322,27 @@ class MainActivity : BaseActivity() {
         page.view.alpha = 0f
         page.view.animate().alpha(1f).setDuration(200).start()
         current = page
+        applySection(id)
         page.onShow()
         tabViews.forEach { (k, v) -> v.isSelected = k == id }
         bottomViews.forEach { (k, v) -> v.isSelected = k == id }
         tabViews[id]?.let { v ->
             if (focusTab) v.requestFocus()
             tabsScroll.post { tabsScroll.smoothScrollTo((v.left - Ui.dp(this, 40)).coerceAtLeast(0), 0) }
+        }
+    }
+
+    /** Tema próprio de cada seção; o perfil infantil usa o tema Kids em todo o app. */
+    private fun applySection(id: String) {
+        val style = if (Profiles.current?.kids == true) Sections.kids else Sections.of(id)
+        if (style != null) {
+            if (backdrop.style?.id != style.id) {
+                backdrop.alpha = 0f
+                backdrop.style = style
+            }
+            backdrop.animate().alpha(1f).setDuration(350).start()
+        } else {
+            backdrop.animate().alpha(0f).setDuration(250).start()
         }
     }
 

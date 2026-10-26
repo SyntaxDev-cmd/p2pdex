@@ -6,6 +6,7 @@ import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.novatv.app.data.AppConfig
+import com.novatv.app.data.CrashReporter
 import com.novatv.app.data.Net
 import com.novatv.app.data.Prefs
 import com.novatv.app.ui.Ui
@@ -15,6 +16,7 @@ class App : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        CrashReporter.install(this)
         Prefs.init(this)
         AppConfig.load(this)
         Net.init(this)

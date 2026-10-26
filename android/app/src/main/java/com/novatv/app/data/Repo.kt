@@ -67,8 +67,9 @@ object Repo {
     private suspend fun <T : Any> cached(key: String, load: suspend () -> T): T {
         cache[key]?.let { return it as T }
         val mutex = locks.getOrPut(key) { Mutex() }
+        // carregamentos e índices rodam fora da thread principal (evita travar a TV Box)
         return mutex.withLock {
-            (cache[key] as T?) ?: load().also { cache[key] = it }
+            (cache[key] as T?) ?: kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { load() }.also { cache[key] = it }
         }
     }
 
@@ -209,9 +210,9 @@ object Repo {
     suspend fun searchIndex(kind: Kind): List<Pair<String, Media>> = index(kind)
 
     /** Busca em todo o catálogo (sem acento, sem diferenciar maiúsculas). */
-    suspend fun search(query: String, kinds: List<Kind>): List<Media> = coroutineScope {
+    suspend fun search(query: String, kinds: List<Kind>): List<Media> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
         val q = normalize(query.trim())
-        if (q.length < 2) return@coroutineScope emptyList<Media>()
+        if (q.length < 2) return@withContext emptyList<Media>()
         val parts = q.split(' ').filter { it.isNotBlank() }
         kinds.map { k -> async { runCatching { index(k) }.getOrDefault(emptyList()) } }
             .flatMap { it.await() }

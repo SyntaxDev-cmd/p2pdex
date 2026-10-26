@@ -43,7 +43,7 @@ class PanelConfig(val json: JSONObject) {
     val splashText: String = app.optString("splash_text")
     val welcome: String = app.optString("welcome")
     val support: String = app.optString("support")
-    val startTab: String = app.optString("start_tab", "tv")
+    val startTab: String = app.optString("start_tab", "highlights")
     val allowServerSelect: Boolean = app.optBoolean("allow_server_select", true)
     val resellerName: String = app.optString("reseller")
     val askResellerCode: Boolean = app.optBoolean("ask_reseller_code", false)
@@ -66,7 +66,7 @@ class PanelConfig(val json: JSONObject) {
 
     val tabs: List<Tab> = json.optJSONArray("tabs")?.let { arr ->
         (0 until arr.length()).mapNotNull { i -> arr.optJSONObject(i)?.let { Tab(it.optString("id"), it.optString("label"), it.optString("icon")) } }
-    } ?: listOf(Tab("tv", "TV"), Tab("sports", "JOGOS"), Tab("highlights", "DESTAQUES"), Tab("movies", "FILMES"),
+    } ?: listOf(Tab("highlights", "INÍCIO"), Tab("tv", "TV"), Tab("sports", "JOGOS"), Tab("movies", "FILMES"),
         Tab("series", "SÉRIES"), Tab("kids", "KIDS"), Tab("anime", "ANIME"), Tab("favorites", "FAVORITOS"))
 
     val servers: List<ServerDef> = json.optJSONArray("servers")?.let { arr ->
