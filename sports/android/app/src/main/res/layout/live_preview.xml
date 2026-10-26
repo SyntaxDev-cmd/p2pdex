@@ -45,6 +45,19 @@
             android:visibility="gone" />
 
         <ImageView
+            android:id="@+id/btnGuide"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
+            android:layout_gravity="bottom|end"
+            android:layout_marginEnd="92dp"
+            android:layout_marginBottom="8dp"
+            android:contentDescription="Guia de programação"
+            android:focusable="true"
+            android:clickable="true"
+            android:padding="6dp"
+            android:src="@drawable/ic_calendar" />
+
+        <ImageView
             android:id="@+id/btnFav"
             android:layout_width="34dp"
             android:layout_height="34dp"
@@ -112,20 +125,5 @@
             android:ellipsize="end"
             android:singleLine="true"
             android:textSize="13sp" />
-
-        <TextView
-            android:id="@+id/btnGuide"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:clickable="true"
-            android:focusable="true"
-            android:paddingStart="16dp"
-            android:paddingTop="8dp"
-            android:paddingEnd="16dp"
-            android:paddingBottom="8dp"
-            android:text="Guia de programação"
-            android:textSize="14sp"
-            android:textStyle="bold" />
     </LinearLayout>
 </LinearLayout>

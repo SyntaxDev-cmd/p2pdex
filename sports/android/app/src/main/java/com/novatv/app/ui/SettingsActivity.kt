@@ -107,6 +107,13 @@ class SettingsActivity : BaseActivity() {
         row("Formato da tela", resizeNames[Prefs.resizeMode.coerceIn(0, resizeNames.size - 1)]) {
             Dialogs.choose(this, "Formato da tela", resizeNames, Prefs.resizeMode) { Prefs.resizeMode = it; render() }
         }
+        val surfaces = listOf("" to "Automático (recomendado)", "texture" to "Compatível — para tela preta ou emulador")
+        row("Modo de vídeo", surfaces.firstOrNull { it.first == Prefs.videoSurface }?.second ?: surfaces[0].second) {
+            Dialogs.choose(this, "Modo de vídeo", surfaces.map { it.second }, surfaces.indexOfFirst { it.first == Prefs.videoSurface }.coerceAtLeast(0)) {
+                Prefs.videoSurface = surfaces[it].first
+                render()
+            }
+        }
         val formats = listOf("" to "Automático (do servidor)", "ts" to "MPEG-TS (.ts) — mais compatível", "m3u8" to "HLS (.m3u8) — mais estável em redes ruins")
         row("Formato do ao vivo", formats.firstOrNull { it.first == Prefs.liveFormat }?.second ?: formats[0].second) {
             Dialogs.choose(this, "Formato do ao vivo", formats.map { it.second }, formats.indexOfFirst { it.first == Prefs.liveFormat }.coerceAtLeast(0)) {
@@ -164,13 +171,6 @@ class SettingsActivity : BaseActivity() {
         row("Versão do app", "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})") {}
         row("Servidor", Repo.provider?.server?.name.orEmpty()) {}
         row("Painel", AppConfig.panelUrl.ifBlank { "não configurado" }) {}
-        list.addView(TextView(this).apply {
-            text = "Este produto usa a API do TMDB, mas não é endossado nem certificado pelo TMDB. Informações e imagens de filmes e séries: The Movie Database (TMDB)."
-            textSize = 12f
-            setTextColor(Ui.withAlpha(Ui.text2, 200))
-            setPadding(Ui.dp(this@SettingsActivity, 6), Ui.dp(this@SettingsActivity, 14), Ui.dp(this@SettingsActivity, 6), 0)
-        })
-        list.addView(tmdbBadge(), LinearLayout.LayoutParams(-2, -2).apply { topMargin = Ui.dp(this@SettingsActivity, 8); leftMargin = Ui.dp(this@SettingsActivity, 6) })
 
         // devolve o foco ao item que estava selecionado
         val restore = focusedTag?.let { list.findViewWithTag<View>(it) } ?: list.getChildAt(1)
@@ -255,17 +255,6 @@ class SettingsActivity : BaseActivity() {
         }
     }
 
-    private fun tmdbBadge(): View = TextView(this).apply {
-        text = "TMDB"
-        textSize = 14f
-        typeface = Typeface.DEFAULT_BOLD
-        setTextColor(Color.parseColor("#0D253F"))
-        setPadding(Ui.dp(this@SettingsActivity, 12), Ui.dp(this@SettingsActivity, 4), Ui.dp(this@SettingsActivity, 12), Ui.dp(this@SettingsActivity, 4))
-        background = android.graphics.drawable.GradientDrawable(
-            android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,
-            intArrayOf(Color.parseColor("#90CEA1"), Color.parseColor("#01B4E4")),
-        ).apply { cornerRadius = Ui.dp(this@SettingsActivity, 20).toFloat() }
-    }
 
     private fun changePin() {
         val field = Dialogs.input(this, "Novo PIN (4 a 8 números)", numeric = true, password = true, max = 8)

@@ -105,13 +105,15 @@ class LivePage(act: MainActivity, id: String, private val mode: String) : Page(a
         } }
         view.findViewById<ImageView>(R.id.btnFull).apply {
             background = roundBg()
+            imageTintList = ColorStateList.valueOf(Color.WHITE)
+            Ui.focusZoom(this, 1.08f)
             setOnClickListener { openFull() }
         }
         btnFav.background = roundBg()
-        view.findViewById<TextView>(R.id.btnGuide).apply {
-            background = Ui.button(act, false)
-            setTextColor(Ui.textColors(Ui.text, Ui.focusText))
-            Ui.focusZoom(this, 1.04f)
+        view.findViewById<ImageView>(R.id.btnGuide).apply {
+            background = roundBg()
+            imageTintList = ColorStateList.valueOf(Color.WHITE)
+            Ui.focusZoom(this, 1.08f)
             setOnClickListener { openGuide() }
         }
         btnFav.setOnClickListener { playing?.let { m -> toggleFav(m) } }
@@ -179,9 +181,11 @@ class LivePage(act: MainActivity, id: String, private val mode: String) : Page(a
                     showEmpty(if (mode == "sports") "Nenhuma categoria de esportes encontrada." else "Nenhuma categoria encontrada.")
                 }
             } catch (e: Exception) {
+                // troca rápida de aba/categoria cancela o carregamento anterior: não é erro
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 showLoading(false)
                 act.handleError(e)
-                showEmpty("Não foi possível carregar.\n${e.message.orEmpty()}")
+                showRetry("Não foi possível carregar.") { load() }
             }
         }
     }
@@ -215,9 +219,10 @@ class LivePage(act: MainActivity, id: String, private val mode: String) : Page(a
                 if (items.isEmpty()) showEmpty(if (c.special == "fav") "Segure OK em um canal para favoritar." else "Nenhum canal nesta categoria.")
                 else chEmpty.visibility = View.GONE
             } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 showLoading(false)
                 act.handleError(e)
-                showEmpty("Erro ao carregar canais.")
+                showRetry("Não foi possível carregar os canais.") { openCategory(c) }
             }
         }
     }
@@ -228,8 +233,18 @@ class LivePage(act: MainActivity, id: String, private val mode: String) : Page(a
     }
 
     private fun showEmpty(msg: String) {
+        chEmpty.setOnClickListener(null)
+        chEmpty.isFocusable = false
         chEmpty.text = msg
         chEmpty.visibility = View.VISIBLE
+    }
+
+    /** Erro de conexão: a mensagem vira um botão "tentar de novo". */
+    private fun showRetry(msg: String, retry: () -> Unit) {
+        chEmpty.text = "$msg\n\n⟳  ${if (Ui.isTv) "Pressione OK" else "Toque aqui"} para tentar de novo"
+        chEmpty.visibility = View.VISIBLE
+        chEmpty.isFocusable = true
+        chEmpty.setOnClickListener { retry() }
     }
 
     private fun onChannel(pos: Int, m: Media) {
