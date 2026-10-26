@@ -126,6 +126,7 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
         heroFeatures.clear()
         heroIndex = 0
         rotate = null
+        heroStreamSlot = null
         loading.visibility = View.GONE
         val skeleton = skeleton()
         column.addView(skeleton)
@@ -172,9 +173,11 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
                 if (features.isNotEmpty()) column.addView(mosaic(features))
             }
             // fileira de streamings (Netflix, Globoplay...) logo abaixo do destaque
-            val streamBox = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE; clipChildren = false; clipToPadding = false }
-            column.addView(streamBox, LinearLayout.LayoutParams(-1, -2))
-            launch { runCatching { fillStreamings(streamBox) }.onFailure { if (it is kotlinx.coroutines.CancellationException) throw it } }
+            val slot = heroStreamSlot
+            val streamBox = slot ?: LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE; clipChildren = false; clipToPadding = false }
+                .also { column.addView(it, LinearLayout.LayoutParams(-1, -2)) }
+            if (slot != null) slot.addView(streamPlaceholder())
+            launch { runCatching { fillStreamings(streamBox, compact = slot != null) }.onFailure { if (it is kotlinx.coroutines.CancellationException) throw it } }
             val resume = addRow("Continuar assistindo", resumeItems(), Kind.MOVIE)
             resumeRow = resume
             if (resume.second.itemCount == 0) resume.first.visibility = View.GONE
@@ -185,9 +188,12 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
                 if (favLive.isNotEmpty()) addRow("Canais favoritos", favLive, Kind.LIVE)
             }
             var rowsShown = 0
+            val repeated = rowItems.filter { it.second.isNotEmpty() }.groupingBy { Repo.normalize(it.first.name).trim() }.eachCount()
             for ((c, items) in rowItems) {
                 if (items.isEmpty()) continue
-                addRow(c.name, items.take(30).map { PosterAdapter.from(it) }, c.kind, c)
+                // "Lançamentos" de filmes e de séries: deixa claro qual é qual
+                val label = if ((repeated[Repo.normalize(c.name).trim()] ?: 0) > 1) c.name + if (c.kind == Kind.SERIES) " · Séries" else " · Filmes" else c.name
+                addRow(label, items.take(30).map { PosterAdapter.from(it) }, c.kind, c)
                 rowsShown++
             }
             loaded = true
@@ -233,7 +239,18 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
     }
 
     /** Mostra só os streamings que existem na lista do cliente (categorias com o nome do serviço). */
-    private suspend fun fillStreamings(box: LinearLayout) {
+    /** Círculos "fantasma" enquanto as categorias chegam (o espaço já fica reservado). */
+    private fun streamPlaceholder(): View {
+        val row = LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL; setPadding(Ui.dp(act, 4), Ui.dp(act, 4), 0, Ui.dp(act, 4)) }
+        val size = Ui.dp(act, 62)
+        repeat(6) {
+            row.addView(View(act).apply { background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Ui.withAlpha(Color.WHITE, 22)) } },
+                LinearLayout.LayoutParams(size, size).apply { marginEnd = Ui.dp(act, 14) })
+        }
+        return row
+    }
+
+    private suspend fun fillStreamings(box: LinearLayout, compact: Boolean = false) {
         val services = streamingList()
         if (services.isEmpty()) return
         val cats = coroutineScope {
@@ -243,16 +260,17 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
         // todos aparecem: com categorias próprias abre a categoria; sem elas, o app monta a lista pelo TMDB
         val found = services.map { st -> st to cats.filter { c -> Repo.matches(c.name, st.keys) } }
         box.removeAllViews()
-        box.addView(title(PanelConfig.current.streamingsTitle, null))
+        if (!compact) box.addView(title(PanelConfig.current.streamingsTitle, null))
         val row = LinearLayout(act).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             clipChildren = false
             clipToPadding = false
-            setPadding(Ui.dp(act, 8), Ui.dp(act, 8), Ui.dp(act, 24), Ui.dp(act, 12))
+            if (compact) setPadding(Ui.dp(act, 4), Ui.dp(act, 4), Ui.dp(act, 16), Ui.dp(act, 4))
+            else setPadding(Ui.dp(act, 8), Ui.dp(act, 8), Ui.dp(act, 24), Ui.dp(act, 12))
         }
-        val size = Ui.dp(act, if (portrait) 66 else 78)
-        found.forEach { (st, list) -> row.addView(streamingCircle(st, list, size), LinearLayout.LayoutParams(size, size).apply { marginEnd = Ui.dp(act, if (portrait) 14 else 18) }) }
+        val size = Ui.dp(act, if (compact) 62 else if (portrait) 66 else 78)
+        found.forEach { (st, list) -> row.addView(streamingCircle(st, list, size), LinearLayout.LayoutParams(size, size).apply { marginEnd = Ui.dp(act, if (compact) 14 else if (portrait) 14 else 18) }) }
         box.addView(SafeHorizontalScrollView(act).apply {
             isHorizontalScrollBarEnabled = false
             clipChildren = false
@@ -571,7 +589,14 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
         }
 
         left.addView(heroFrame, LinearLayout.LayoutParams(-1, -2))
-        left.addView(tilesRow(), LinearLayout.LayoutParams(-1, -2).apply { topMargin = gap })
+        if (kind == null && streamingList().isNotEmpty()) {
+            // tela inicial: streamings no lugar dos atalhos
+            val slot = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; clipChildren = false; clipToPadding = false }
+            heroStreamSlot = slot
+            left.addView(slot, LinearLayout.LayoutParams(-1, -2).apply { topMargin = gap })
+        } else {
+            left.addView(tilesRow(), LinearLayout.LayoutParams(-1, -2).apply { topMargin = gap })
+        }
 
         if (portrait) {
             root.addView(left, LinearLayout.LayoutParams(-1, -2))
@@ -587,6 +612,7 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
 
     private var rotate: (() -> Unit)? = null
     private var showHero: ((Int, Boolean) -> Unit)? = null
+    private var heroStreamSlot: LinearLayout? = null
     private val heroFeatures = mutableListOf<Feature>()
     private var heroIndex = 0
 
