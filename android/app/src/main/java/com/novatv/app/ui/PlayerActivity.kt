@@ -449,6 +449,12 @@ class PlayerActivity : BaseActivity() {
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.action != KeyEvent.ACTION_DOWN) return super.dispatchKeyEvent(event)
         val code = event.keyCode
+        if (code == KeyEvent.KEYCODE_GUIDE && live) {
+            val list = PlayQueue.entries.mapNotNull { it.media }
+            GuideActivity.open(this, list, PlayQueue.index)
+            finish()
+            return true
+        }
         if (code == KeyEvent.KEYCODE_PROG_RED || code == KeyEvent.KEYCODE_BOOKMARK) {
             toggleCurrentFav()
             return true

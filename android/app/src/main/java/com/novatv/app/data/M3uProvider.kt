@@ -22,6 +22,15 @@ class M3uProvider(override val server: ServerDef, private val user: String, priv
     private val items = HashMap<Kind, MutableList<Media>>()
     @Volatile
     private var loaded = false
+    /** url-tvg / x-tvg-url do cabeçalho #EXTM3U. */
+    @Volatile
+    private var headerEpg = ""
+
+    private fun epg(): XmlTvEpg? {
+        val u = server.epgUrl.ifBlank { headerEpg }
+            .replace("{username}", Uri.encode(user)).replace("{password}", Uri.encode(pass))
+        return if (u.startsWith("http")) XmlTvEpg.of(u, server.userAgent) else null
+    }
 
     private val url: String
         get() = server.m3uUrl.replace("{username}", Uri.encode(user)).replace("{password}", Uri.encode(pass))
@@ -67,6 +76,9 @@ class M3uProvider(override val server: ServerDef, private val user: String, priv
         while (line != null) {
             val l = line.trim()
             when {
+                l.startsWith("#EXTM3U", true) -> {
+                    Regex("(?:url-tvg|x-tvg-url)=\"([^\"]+)\"").find(l)?.let { headerEpg = it.groupValues[1].split(',').first().trim() }
+                }
                 l.startsWith("#EXTINF", true) -> { info = l; group = null }
                 l.startsWith("#EXTGRP:", true) -> group = l.substringAfter(':').trim()
                 l.isEmpty() || l.startsWith("#") -> Unit
@@ -129,7 +141,23 @@ class M3uProvider(override val server: ServerDef, private val user: String, priv
     override suspend fun details(m: Media): Details =
         Details(m.name, m.icon, "", "", "", "", "", m.rating, m.year, "", m.ext)
 
-    override suspend fun shortEpg(m: Media): List<EpgItem> = emptyList()
+    override suspend fun shortEpg(m: Media): List<EpgItem> {
+        val now = System.currentTimeMillis()
+        return fullEpg(m).filter { it.end > now }.take(4)
+    }
+
+    override suspend fun fullEpg(m: Media): List<EpgItem> {
+        ensure()
+        val x = epg() ?: return emptyList()
+        return try {
+            x.ensure()
+            val since = System.currentTimeMillis() - 12 * 3600_000L
+            x.forChannel(m.epgId, m.name).filter { it.end > since }
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            emptyList()
+        }
+    }
 
     override fun streamUrl(m: Media): String = m.directUrl
 

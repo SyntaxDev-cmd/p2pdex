@@ -23,6 +23,7 @@ import com.novatv.app.data.Prefs
 import com.novatv.app.data.Repo
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -107,6 +108,12 @@ class LivePage(act: MainActivity, id: String, private val mode: String) : Page(a
             setOnClickListener { openFull() }
         }
         btnFav.background = roundBg()
+        view.findViewById<TextView>(R.id.btnGuide).apply {
+            background = Ui.button(act, false)
+            setTextColor(Ui.textColors(Ui.text, Ui.focusText))
+            Ui.focusZoom(this, 1.04f)
+            setOnClickListener { openGuide() }
+        }
         btnFav.setOnClickListener { playing?.let { m -> toggleFav(m) } }
         if (Ui.isTv) view.findViewById<TextView>(R.id.chHint)?.text = "OK: assistir  •  Segure OK: favoritar"
         else view.findViewById<TextView>(R.id.chHint)?.text = "Toque: assistir  •  Toque e segure: favoritar"
@@ -307,18 +314,25 @@ class LivePage(act: MainActivity, id: String, private val mode: String) : Page(a
     private fun loadEpg(m: Media) {
         epgJob?.cancel()
         epgJob = act.launch {
-            val list = runCatching { Repo.epg(m) }.getOrDefault(emptyList())
-            if (playing?.key != m.key) return@launch
-            val now = list.firstOrNull { it.start <= System.currentTimeMillis() } ?: list.firstOrNull()
-            if (now == null) {
-                nowEpg.text = "Sem guia de programação"
-                return@launch
+            // atualiza a cada minuto enquanto o canal estiver na prévia
+            while (isActive && playing?.key == m.key) {
+                val list = runCatching { Repo.epg(m) }.getOrDefault(emptyList())
+                if (playing?.key != m.key) return@launch
+                val t = System.currentTimeMillis()
+                val now = list.firstOrNull { it.start <= t && it.end > t } ?: list.firstOrNull()
+                if (now == null) {
+                    nowEpg.text = "Sem guia de programação"
+                    epgProgress.visibility = View.GONE
+                    nextEpg.text = ""
+                } else {
+                    nowEpg.text = "${timeFmt.format(Date(now.start))} – ${timeFmt.format(Date(now.end))}  ${now.title}"
+                    epgProgress.progress = now.progress()
+                    epgProgress.visibility = View.VISIBLE
+                    val next = list.getOrNull(list.indexOf(now) + 1)
+                    nextEpg.text = next?.let { "A seguir: ${timeFmt.format(Date(it.start))}  ${it.title}" }.orEmpty()
+                }
+                delay(60_000)
             }
-            nowEpg.text = "${timeFmt.format(Date(now.start))} – ${timeFmt.format(Date(now.end))}  ${now.title}"
-            epgProgress.progress = now.progress()
-            epgProgress.visibility = View.VISIBLE
-            val next = list.getOrNull(list.indexOf(now) + 1)
-            nextEpg.text = next?.let { "A seguir: ${timeFmt.format(Date(it.start))}  ${it.title}" }.orEmpty()
         }
     }
 
@@ -329,6 +343,16 @@ class LivePage(act: MainActivity, id: String, private val mode: String) : Page(a
         PlayQueue.live(list, idx)
         releasePlayer()
         act.openPlayer()
+    }
+
+    /** Abre o guia de programação com os canais da categoria atual. */
+    fun openGuide() {
+        val list = channels.items
+        if (list.isEmpty()) {
+            Dialogs.toast(act, "Escolha uma categoria com canais")
+            return
+        }
+        GuideActivity.open(act, list, list.indexOfFirst { it.key == playing?.key }.coerceAtLeast(0))
     }
 
     /** Chamado ao voltar do player: retoma a prévia no canal que estava tocando. */

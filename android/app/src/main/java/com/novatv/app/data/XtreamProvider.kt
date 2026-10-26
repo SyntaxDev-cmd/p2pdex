@@ -28,6 +28,8 @@ interface Provider {
     suspend fun all(kind: Kind): List<Media>
     suspend fun details(m: Media): Details
     suspend fun shortEpg(m: Media): List<EpgItem>
+    /** Programação completa (dia) do canal. */
+    suspend fun fullEpg(m: Media): List<EpgItem>
     fun streamUrl(m: Media): String
     fun episodeUrl(e: Episode): String
     /** Troca para a próxima DNS depois de falha no player. true se trocou. */
@@ -246,23 +248,60 @@ class XtreamProvider(
         )
     }
 
-    override suspend fun shortEpg(m: Media): List<EpgItem> = try {
-        call("get_short_epg", mapOf("stream_id" to m.id, "limit" to "4")) { input ->
-            val o = JSONObject(input.bufferedReader().readText())
-            val arr = o.optJSONArray("epg_listings") ?: JSONArray()
-            (0 until arr.length()).mapNotNull { i ->
-                val e = arr.optJSONObject(i) ?: return@mapNotNull null
-                val start = e.optString("start_timestamp").toLongOrNull()?.times(1000) ?: parseDate(e.optString("start"))
-                val end = e.optString("stop_timestamp").toLongOrNull()?.times(1000) ?: parseDate(e.optString("end"))
-                EpgItem(b64(e.optString("title")), b64(e.optString("description")), start, end)
-            }.filter { it.end > System.currentTimeMillis() }.sortedBy { it.start }
+    /** EPG XMLTV próprio definido no painel (opcional). */
+    private val xmltv: XmlTvEpg? = server.epgUrl.takeIf { it.isNotBlank() }?.let {
+        XmlTvEpg.of(it.replace("{username}", Uri.encode(apiUser)).replace("{password}", Uri.encode(pass)), server.userAgent)
+    }
+
+    private fun parseListings(input: InputStream): List<EpgItem> {
+        val o = JSONObject(input.bufferedReader().readText())
+        val arr = o.optJSONArray("epg_listings") ?: JSONArray()
+        return (0 until arr.length()).mapNotNull { i ->
+            val e = arr.optJSONObject(i) ?: return@mapNotNull null
+            val start = e.optString("start_timestamp").toLongOrNull()?.times(1000) ?: parseDate(e.optString("start"))
+            val end = e.optString("stop_timestamp").toLongOrNull()?.times(1000) ?: parseDate(e.optString("end").ifEmpty { e.optString("stop") })
+            if (start <= 0 || end <= start) null else EpgItem(b64(e.optString("title")), b64(e.optString("description")), start, end)
+        }.distinctBy { it.start }.sortedBy { it.start }
+    }
+
+    private suspend fun fromXmltv(m: Media): List<EpgItem> {
+        val x = xmltv ?: return emptyList()
+        return try {
+            x.ensure()
+            x.forChannel(m.epgId, m.name)
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            emptyList()
         }
-    } catch (e: AuthException) {
-        emptyList()
-    } catch (e: IOException) {
-        emptyList()
-    } catch (e: org.json.JSONException) {
-        emptyList()
+    }
+
+    override suspend fun shortEpg(m: Media): List<EpgItem> {
+        val now = System.currentTimeMillis()
+        fromXmltv(m).filter { it.end > now }.takeIf { it.isNotEmpty() }?.let { return it.take(4) }
+        return try {
+            call("get_short_epg", mapOf("stream_id" to m.id, "limit" to "6")) { parseListings(it) }.filter { it.end > now }
+        } catch (e: AuthException) {
+            emptyList()
+        } catch (e: IOException) {
+            emptyList()
+        } catch (e: org.json.JSONException) {
+            emptyList()
+        }
+    }
+
+    override suspend fun fullEpg(m: Media): List<EpgItem> {
+        val since = System.currentTimeMillis() - 12 * 3600_000L
+        fromXmltv(m).filter { it.end > since }.takeIf { it.isNotEmpty() }?.let { return it }
+        return try {
+            call("get_simple_data_table", mapOf("stream_id" to m.id)) { parseListings(it) }.filter { it.end > since }
+                .ifEmpty { shortEpg(m) }
+        } catch (e: AuthException) {
+            emptyList()
+        } catch (e: IOException) {
+            emptyList()
+        } catch (e: org.json.JSONException) {
+            emptyList()
+        }
     }
 
     private fun enc(s: String) = Uri.encode(s, "@._-")

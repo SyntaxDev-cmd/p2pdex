@@ -334,6 +334,11 @@ class MainActivity : BaseActivity() {
                 openSearch()
                 return true
             }
+            KeyEvent.KEYCODE_GUIDE -> {
+                val live = current as? LivePage
+                if (live != null) live.openGuide() else if (tabViews.containsKey("tv")) switchTab("tv", true)
+                return true
+            }
             KeyEvent.KEYCODE_PROG_RED -> { switchTab("tv", true); return true }
             KeyEvent.KEYCODE_PROG_GREEN -> { switchTab("movies", true); return true }
             KeyEvent.KEYCODE_PROG_YELLOW -> { switchTab("series", true); return true }

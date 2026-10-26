@@ -160,6 +160,18 @@ object Repo {
         return list
     }
 
+    /** Guia completo do canal (cache de 15 min). */
+    suspend fun guide(m: Media): List<EpgItem> {
+        if (!config.epg || m.kind != Kind.LIVE) return emptyList()
+        val key = "guide:${m.id}"
+        @Suppress("UNCHECKED_CAST")
+        val hit = cache[key] as? Pair<Long, List<EpgItem>>
+        if (hit != null && System.currentTimeMillis() - hit.first < 15 * 60_000) return hit.second
+        val list = need().fullEpg(m)
+        cache[key] = System.currentTimeMillis() to list
+        return list
+    }
+
     /** Categorias de um tipo que batem com palavras-chave (kids, anime, esportes). */
     suspend fun filtered(kind: Kind, keywords: List<String>): List<Category> =
         categories(kind).filter { !it.locked && matches(it.name, keywords) }
