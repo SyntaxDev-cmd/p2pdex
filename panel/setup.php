@@ -17,13 +17,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $u = trim((string)($_POST['username'] ?? ''));
     $p = (string)($_POST['password'] ?? '');
     if (!preg_match('/^[a-zA-Z0-9_.-]{3,32}$/', $u)) $errors[] = 'Usuário deve ter 3 a 32 caracteres (letras, números, _ . -).';
-    if (strlen($p) < 8) $errors[] = 'A senha precisa de pelo menos 8 caracteres.';
+    if ($msg = password_ok($p)) $errors[] = $msg;
     if ($p !== ($_POST['password2'] ?? '')) $errors[] = 'As senhas não conferem.';
     if (!$errors) {
         db()->prepare('INSERT INTO admins (username, password_hash) VALUES (?, ?)')->execute([$u, password_hash($p, PASSWORD_DEFAULT)]);
-        $_SESSION['admin_id'] = (int)db()->lastInsertId();
-        $_SESSION['admin_user'] = $u;
-        $_SESSION['login_at'] = time();
+        login_as('admin', (int)db()->lastInsertId(), $u);
+        audit('setup');
         flash('Painel instalado! Agora configure a aparência e cadastre seus servidores.');
         redirect('index.php');
     }
@@ -41,7 +40,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <?php foreach ($errors as $er): ?><div class="alert err"><?= e($er) ?></div><?php endforeach; ?>
   <?= csrf_field() ?>
   <div class="field"><label>Usuário admin</label><input type="text" name="username" required value="<?= e($_POST['username'] ?? 'admin') ?>"></div>
-  <div class="field"><label>Senha (mín. 8)</label><input type="password" name="password" required></div>
+  <div class="field"><label>Senha (mín. 8, letras e números)</label><input type="password" name="password" required></div>
   <div class="field"><label>Repita a senha</label><input type="password" name="password2" required></div>
   <button class="btn" style="width:100%;justify-content:center">Criar e entrar</button>
 </form></div></body></html>

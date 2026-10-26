@@ -1,6 +1,6 @@
 <?php
 require __DIR__ . '/inc/bootstrap.php';
-require_login();
+require_admin();
 
 $colorKeys = [
     'color_primary' => ['Cor principal', 'Faixas, títulos de lista e botões'],

@@ -1,6 +1,6 @@
 <?php
 require __DIR__ . '/inc/bootstrap.php';
-require_login();
+require_admin();
 
 $pdo = db();
 $actions = ['none' => 'Nenhuma', 'search' => 'Pesquisar no app (texto)', 'tab' => 'Abrir aba (tv, movies, series, kids, anime)', 'url' => 'Abrir link externo'];

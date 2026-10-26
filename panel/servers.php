@@ -16,6 +16,30 @@ function normalize_url(string $u): string
 $action = $_GET['action'] ?? '';
 $id = (int)($_GET['id'] ?? 0);
 $testResult = null;
+$rid = reseller_id();
+
+/** Revenda só mexe nos próprios servidores. */
+function owned_server(int $id): ?array
+{
+    $st = db()->prepare('SELECT * FROM servers WHERE id=?');
+    $st->execute([$id]);
+    $s = $st->fetch();
+    if (!$s) return null;
+    if (!is_admin() && (int)$s['reseller_id'] !== reseller_id()) return null;
+    return $s;
+}
+
+if ($id && !owned_server($id)) {
+    flash('Servidor não encontrado.', 'err');
+    redirect('servers.php');
+}
+$me = is_admin() ? null : reseller($rid);
+$myCount = (int)(function () use ($pdo, $rid) {
+    $st = $pdo->prepare('SELECT COUNT(*) FROM servers WHERE reseller_id=?');
+    $st->execute([$rid]);
+    return $st->fetchColumn();
+})();
+$canAdd = is_admin() || ($me && $myCount < (int)$me['max_servers']);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $op = $_POST['op'] ?? '';
@@ -36,7 +60,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'priority' => (int)($_POST['priority'] ?? 0),
             'active' => !empty($_POST['active']) ? 1 : 0,
             'notes' => mb_substr(trim((string)($_POST['notes'] ?? '')), 0, 500),
+            'reseller_id' => is_admin() ? max(0, (int)($_POST['owner'] ?? 0)) : $rid,
         ];
+        if (!$id && !$canAdd) {
+            flash('Limite de servidores da sua revenda atingido.', 'err');
+            redirect('servers.php');
+        }
         $err = '';
         if ($type === 'm3u' && $data['m3u_url'] === '') $err = 'Informe a URL da lista M3U.';
         if ($type !== 'm3u' && $data['urls'] === '') $err = 'Informe pelo menos uma DNS/URL.';
@@ -53,11 +82,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $ph = implode(',', array_map(fn($k) => ":$k", array_keys($data)));
             $pdo->prepare("INSERT INTO servers ($cols) VALUES ($ph)")->execute($data);
         }
+        audit('servidor_salvo', $data['name']);
         flash('Servidor salvo.');
         redirect('servers.php');
     }
     if ($op === 'delete' && $id) {
         $pdo->prepare('DELETE FROM servers WHERE id=?')->execute([$id]);
+        audit('servidor_excluido', (string)$id);
         flash('Servidor removido.');
         redirect('servers.php');
     }
@@ -106,12 +137,24 @@ if (($action === 'edit' && $id) || $action === 'new') {
         $editing = $st->fetch() ?: null;
     }
     if (!$editing) {
-        $editing = ['id' => 0, 'name' => '', 'type' => 'xtream', 'urls' => '', 'm3u_url' => '', 'epg_url' => '', 'user_agent' => '', 'output' => 'ts', 'p2p_email' => '', 'p2p_lib' => '', 'p2p_template' => '', 'priority' => 0, 'active' => 1, 'notes' => ''];
+        if (!$canAdd) {
+            flash('Limite de servidores da sua revenda atingido.', 'err');
+            redirect('servers.php');
+        }
+        $editing = ['id' => 0, 'reseller_id' => $rid, 'name' => '', 'type' => 'xtream', 'urls' => '', 'm3u_url' => '', 'epg_url' => '', 'user_agent' => '', 'output' => 'ts', 'p2p_email' => '', 'p2p_lib' => '', 'p2p_template' => '', 'priority' => 0, 'active' => 1, 'notes' => ''];
     }
 }
-$servers = $pdo->query('SELECT * FROM servers ORDER BY priority DESC, id ASC')->fetchAll();
+if (is_admin()) {
+    $servers = $pdo->query('SELECT s.*, r.name AS owner FROM servers s LEFT JOIN resellers r ON r.id=s.reseller_id ORDER BY s.reseller_id, s.priority DESC, s.id')->fetchAll();
+    $owners = $pdo->query('SELECT id, name FROM resellers ORDER BY name')->fetchAll();
+} else {
+    $st = $pdo->prepare('SELECT s.*, NULL AS owner FROM servers s WHERE reseller_id=? ORDER BY priority DESC, id');
+    $st->execute([$rid]);
+    $servers = $st->fetchAll();
+    $owners = [];
+}
 
-$pageTitle = 'Servidores, DNS e P2P';
+$pageTitle = is_admin() ? 'Servidores, DNS e P2P' : 'Meus servidores';
 $active = 'servers';
 require __DIR__ . '/inc/header.php';
 ?>
@@ -127,6 +170,13 @@ require __DIR__ . '/inc/header.php';
       </select></div>
     <div class="field"><label>Prioridade (maior = primeiro)</label><input type="number" name="priority" value="<?= (int)$editing['priority'] ?>"></div>
   </div>
+  <?php if (is_admin()): ?>
+  <div class="field"><label>Dono do servidor</label>
+    <select name="owner">
+      <option value="0">Administrador (clientes sem código de revenda)</option>
+      <?php foreach ($owners as $o): ?><option value="<?= $o['id'] ?>" <?= (int)($editing['reseller_id'] ?? 0) === (int)$o['id'] ? 'selected' : '' ?>>Revenda: <?= e($o['name']) ?></option><?php endforeach; ?>
+    </select></div>
+  <?php endif; ?>
 
   <div class="field" data-for="xtream p2p"><label data-label-xtream="DNS do servidor (uma por linha — o app troca sozinho se uma cair)" data-label-p2p="API Auth (domínio da API P2P — uma por linha para failover)">DNS</label>
     <textarea name="urls" placeholder="http://dns1.exemplo.com:80&#10;http://dns2.exemplo.com:8080"><?= e($editing['urls']) ?></textarea>
@@ -185,15 +235,17 @@ require __DIR__ . '/inc/header.php';
 <?php endif; ?>
 
 <div class="card">
-  <div class="row" style="justify-content:space-between;margin-bottom:12px"><h2 style="margin:0">Servidores cadastrados</h2><a class="btn" href="servers.php?action=new">+ Novo servidor</a></div>
+  <div class="row" style="justify-content:space-between;margin-bottom:12px"><h2 style="margin:0">Servidores cadastrados<?= $me ? ' <small class="hint">(' . $myCount . ' de ' . (int)$me['max_servers'] . ')</small>' : '' ?></h2>
+    <?php if ($canAdd): ?><a class="btn" href="servers.php?action=new">+ Novo servidor</a><?php else: ?><span class="badge off">Limite atingido</span><?php endif; ?></div>
   <?php if (!$servers): ?><div class="empty">Nenhum servidor ainda. Cadastre sua DNS Xtream, seu P2P ou uma lista M3U.</div><?php else: ?>
   <div class="tbl"><table>
-    <tr><th>Nome</th><th>Tipo</th><th>Endereços</th><th>Prioridade</th><th>Status</th><th></th></tr>
+    <tr><th>Nome</th><th>Tipo</th><th>Endereços</th><?php if (is_admin()): ?><th>Dono</th><?php endif; ?><th>Prioridade</th><th>Status</th><th></th></tr>
     <?php foreach ($servers as $s): $n = count(lines($s['urls'])); ?>
     <tr>
       <td><strong><?= e($s['name']) ?></strong><?php if ($s['notes']): ?><br><small class="hint"><?= e($s['notes']) ?></small><?php endif; ?></td>
       <td><span class="badge <?= $s['type'] === 'p2p' ? 'p2p' : '' ?>"><?= e(strtoupper($s['type'])) ?></span></td>
-      <td class="mono"><?= $s['type'] === 'm3u' ? 'lista M3U' : ($n . ' DNS' . ($s['p2p_lib'] ? ' + LIB' : '')) ?></td>
+      <td class="mono" data-label="Endereços"><?= $s['type'] === 'm3u' ? 'lista M3U' : ($n . ' DNS' . ($s['p2p_lib'] ? ' + LIB' : '')) ?></td>
+      <?php if (is_admin()): ?><td data-label="Dono"><?= $s['owner'] ? '🤝 ' . e($s['owner']) : 'Admin' ?></td><?php endif; ?>
       <td><?= (int)$s['priority'] ?></td>
       <td><form method="post" action="servers.php?id=<?= $s['id'] ?>" style="display:inline"><?= csrf_field() ?><input type="hidden" name="op" value="toggle"><button class="badge <?= $s['active'] ? 'on' : 'off' ?>" style="border:0;cursor:pointer"><?= $s['active'] ? 'Ativo' : 'Inativo' ?></button></form></td>
       <td class="row" style="justify-content:flex-end">
@@ -201,7 +253,7 @@ require __DIR__ . '/inc/header.php';
         <form method="post" action="servers.php?id=<?= $s['id'] ?>" style="display:inline"><?= csrf_field() ?><input type="hidden" name="op" value="delete"><button class="btn small danger" data-confirm="Remover este servidor?">Excluir</button></form>
       </td>
     </tr>
-    <tr><td colspan="6">
+    <tr class="sub"><td colspan="7">
       <form method="post" action="servers.php?id=<?= $s['id'] ?>" class="row"><?= csrf_field() ?><input type="hidden" name="op" value="test">
         <input type="text" name="test_user" placeholder="usuário de teste" style="max-width:200px"><input type="password" name="test_pass" placeholder="senha de teste" style="max-width:200px">
         <button class="btn small ghost">⚡ Testar conexão</button></form>

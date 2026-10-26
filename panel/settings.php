@@ -1,6 +1,6 @@
 <?php
 require __DIR__ . '/inc/bootstrap.php';
-require_login();
+require_admin();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $op = $_POST['op'] ?? 'save';
@@ -15,7 +15,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'force_update' => !empty($_POST['force_update']) ? '1' : '0',
             'allow_server_select' => !empty($_POST['allow_server_select']) ? '1' : '0',
             'register_devices' => !empty($_POST['register_devices']) ? '1' : '0',
-            'api_key_required' => !empty($_POST['api_key_required']) ? '1' : '0',
             'epg_enabled' => !empty($_POST['epg_enabled']) ? '1' : '0',
             'player_buffer' => in_array($_POST['player_buffer'] ?? '', ['low', 'normal', 'high'], true) ? $_POST['player_buffer'] : 'normal',
             'default_user_agent' => mb_substr(trim((string)($_POST['default_user_agent'] ?? '')), 0, 200),
@@ -25,11 +24,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $cur = (string)($_POST['current'] ?? '');
         $new = (string)($_POST['new'] ?? '');
         $st = db()->prepare('SELECT password_hash FROM admins WHERE id=?');
-        $st->execute([$_SESSION['admin_id']]);
+        $st->execute([(int)$_SESSION['uid']]);
         if (!password_verify($cur, (string)$st->fetchColumn())) flash('Senha atual incorreta.', 'err');
-        elseif (strlen($new) < 8) flash('A nova senha precisa de 8+ caracteres.', 'err');
+        elseif ($msg = password_ok($new)) flash($msg, 'err');
         else {
-            db()->prepare('UPDATE admins SET password_hash=? WHERE id=?')->execute([password_hash($new, PASSWORD_DEFAULT), $_SESSION['admin_id']]);
+            db()->prepare('UPDATE admins SET password_hash=? WHERE id=?')->execute([password_hash($new, PASSWORD_DEFAULT), (int)$_SESSION['uid']]);
+            audit('senha_alterada');
             flash('Senha alterada.');
         }
     } elseif ($op === 'regen_key') {
@@ -87,7 +87,6 @@ require __DIR__ . '/inc/header.php';
     <h2>Conexão e player</h2>
     <label class="switch" style="margin-bottom:10px"><input type="checkbox" name="allow_server_select" value="1" <?= $s['allow_server_select'] === '1' ? 'checked' : '' ?>> Cliente escolhe o servidor no login (senão: automático)</label>
     <label class="switch" style="margin-bottom:10px"><input type="checkbox" name="register_devices" value="1" <?= $s['register_devices'] === '1' ? 'checked' : '' ?>> Registrar dispositivos</label>
-    <label class="switch" style="margin-bottom:10px"><input type="checkbox" name="api_key_required" value="1" <?= $s['api_key_required'] === '1' ? 'checked' : '' ?>> Exigir chave da API (o app precisa ter a PANEL_KEY)</label>
     <label class="switch" style="margin-bottom:14px"><input type="checkbox" name="epg_enabled" value="1" <?= $s['epg_enabled'] === '1' ? 'checked' : '' ?>> Mostrar guia de programação (EPG)</label>
     <div class="field"><label>Buffer do player</label><select name="player_buffer">
       <?php foreach (['low' => 'Baixo (zapping rápido, internet boa)', 'normal' => 'Normal (recomendado)', 'high' => 'Alto (internet instável)'] as $k => $l): ?><option value="<?= $k ?>" <?= $s['player_buffer'] === $k ? 'selected' : '' ?>><?= $l ?></option><?php endforeach; ?>

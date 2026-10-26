@@ -1,5 +1,5 @@
 <?php
 require __DIR__ . '/inc/bootstrap.php';
-$_SESSION = [];
-session_destroy();
+if (!empty($_SESSION['role'])) audit('logout');
+logout_now();
 redirect('login.php');

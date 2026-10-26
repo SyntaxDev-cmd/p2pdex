@@ -28,33 +28,65 @@ function req(string $k, int $max = 120): string
 
 try {
     $s = settings();
+    if (api_rate_limited((int)$s['api_rate_limit'])) {
+        out(['ok' => false, 'error' => 'rate_limited'], 429);
+    }
     $key = req('key', 64);
     if ($s['api_key_required'] === '1' && ($key === '' || !hash_equals($s['api_key'], $key))) {
         out(['ok' => false, 'error' => 'invalid_key'], 401);
     }
 
     $pdo = db();
+
+    // ---- revenda (código no APK ou digitado no login)
+    $code = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', req('reseller', 12)));
+    $reseller = null;
+    if ($code !== '') {
+        $reseller = reseller_by_code($code);
+        if (!$reseller || !$reseller['active'] || reseller_expired($reseller)) {
+            out(['ok' => false, 'error' => 'invalid_reseller', 'message' => 'Código de revenda inválido, inativo ou vencido. Fale com quem te vendeu o acesso.'], 403);
+        }
+    } elseif ($s['require_reseller_code'] === '1') {
+        out(['ok' => false, 'error' => 'reseller_required', 'message' => 'Informe o código da sua revenda.'], 403);
+    }
+    $rid = $reseller ? (int)$reseller['id'] : 0;
+
+    // ---- registro do aparelho e limite de vagas da revenda
     $blocked = false;
+    $blockReason = '';
     $deviceId = preg_replace('/[^a-zA-Z0-9_-]/', '', req('device_id', 64));
-    if ($deviceId !== '' && $s['register_devices'] === '1') {
-        $platform = req('platform', 10) === 'tv' ? 'tv' : 'mobile';
-        $pdo->prepare("INSERT INTO devices (device_id, model, platform, android, app_version, username, server_id, ip)
-            VALUES (:d, :m, :p, :a, :v, :u, :s, :ip)
-            ON CONFLICT(device_id) DO UPDATE SET model=excluded.model, platform=excluded.platform, android=excluded.android,
-              app_version=excluded.app_version, username=CASE WHEN excluded.username<>'' THEN excluded.username ELSE devices.username END,
-              server_id=CASE WHEN excluded.server_id>0 THEN excluded.server_id ELSE devices.server_id END,
-              ip=excluded.ip, last_seen=datetime('now','localtime')")
-            ->execute([
-                ':d' => $deviceId, ':m' => req('model', 80), ':p' => $platform, ':a' => req('android', 10),
-                ':v' => req('version', 20), ':u' => req('username', 60), ':s' => (int)req('server_id', 10), ':ip' => client_ip(),
-            ]);
-        $st = $pdo->prepare('SELECT blocked FROM devices WHERE device_id=?');
+    if ($deviceId !== '' && ($s['register_devices'] === '1' || $rid > 0)) {
+        $st = $pdo->prepare('SELECT id, blocked, reseller_id FROM devices WHERE device_id=?');
         $st->execute([$deviceId]);
-        $blocked = (int)$st->fetchColumn() === 1;
+        $existing = $st->fetch();
+        $isNewForReseller = !$existing || (int)$existing['reseller_id'] !== $rid;
+        if ($rid > 0 && $isNewForReseller && reseller_device_count($rid) >= (int)$reseller['max_devices']) {
+            $blocked = true;
+            $blockReason = 'limit';
+        } else {
+            $platform = req('platform', 10) === 'tv' ? 'tv' : 'mobile';
+            $pdo->prepare("INSERT INTO devices (device_id, model, platform, android, app_version, username, server_id, ip, reseller_id)
+                VALUES (:d, :m, :p, :a, :v, :u, :s, :ip, :r)
+                ON CONFLICT(device_id) DO UPDATE SET model=excluded.model, platform=excluded.platform, android=excluded.android,
+                  app_version=excluded.app_version, username=CASE WHEN excluded.username<>'' THEN excluded.username ELSE devices.username END,
+                  server_id=CASE WHEN excluded.server_id>0 THEN excluded.server_id ELSE devices.server_id END,
+                  ip=excluded.ip, reseller_id=excluded.reseller_id, last_seen=datetime('now','localtime')")
+                ->execute([
+                    ':d' => $deviceId, ':m' => req('model', 80), ':p' => $platform, ':a' => req('android', 10),
+                    ':v' => req('version', 20), ':u' => req('username', 60), ':s' => (int)req('server_id', 10), ':ip' => client_ip(), ':r' => $rid,
+                ]);
+            if ($existing && (int)$existing['blocked'] === 1) {
+                $blocked = true;
+                $blockReason = 'blocked';
+            }
+        }
     }
 
+    $st = $pdo->prepare('SELECT * FROM servers WHERE active=1 AND reseller_id=? ORDER BY priority DESC, id ASC');
+    $st->execute([$rid]);
+    $serverRows = $st->fetchAll();
     $servers = [];
-    foreach ($pdo->query('SELECT * FROM servers WHERE active=1 ORDER BY priority DESC, id ASC') as $r) {
+    foreach ($serverRows as $r) {
         $servers[] = [
             'id' => (int)$r['id'],
             'name' => $r['name'],
@@ -70,9 +102,12 @@ try {
         ];
     }
 
+    // aparelho bloqueado ou sem vaga não recebe os endereços dos servidores
+    if ($blocked) $servers = [];
+
     $tabs = [];
     foreach (['tv', 'sports', 'highlights', 'movies', 'series', 'kids', 'anime', 'favorites'] as $t) {
-        if ($s['tab_' . $t] === '1') $tabs[] = ['id' => $t, 'label' => $s['label_' . $t]];
+        if ($s['tab_' . $t] === '1') $tabs[] = ['id' => $t, 'label' => $s['label_' . $t], 'icon' => asset_url($s['icon_' . $t] ?? '')];
     }
 
     $banners = [];
@@ -95,9 +130,12 @@ try {
             'background_mode' => $s['background_mode'],
             'splash_text' => $s['splash_text'],
             'welcome' => $s['welcome_message'],
-            'support' => $s['support_text'],
+            'support' => $reseller && $reseller['whatsapp'] !== '' ? 'Suporte: ' . $reseller['whatsapp'] : $s['support_text'],
+            'reseller' => $reseller ? $reseller['name'] : '',
+            'ask_reseller_code' => $s['ask_reseller_code'] === '1' || $s['require_reseller_code'] === '1',
             'start_tab' => $s['start_tab'],
             'allow_server_select' => $s['allow_server_select'] === '1',
+            'home_mosaic' => ($s['home_mosaic'] ?? '1') === '1',
         ],
         'theme' => [
             'primary' => $s['color_primary'],
@@ -124,6 +162,16 @@ try {
             'kids_lock' => $s['kids_lock'] === '1',
             'pin' => $s['parental_pin'],
         ],
+        'games' => [
+            'enabled' => $s['games_enabled'] === '1' && trim($s['games_api_url']) !== '',
+            'url' => base_url() . '/api/games.php',
+        ],
+        'tmdb' => [
+            'enabled' => $s['tmdb_enabled'] === '1',
+            'api_key' => $s['tmdb_api_key'],
+            'token' => $s['tmdb_token'],
+            'language' => $s['tmdb_language'] ?: 'pt-BR',
+        ],
         'player' => [
             'buffer' => $s['player_buffer'],
             'epg' => $s['epg_enabled'] === '1',
@@ -132,7 +180,13 @@ try {
         'messages' => $messages,
         'maintenance' => ['on' => $s['maintenance'] === '1', 'message' => $s['maintenance_message']],
         'update' => ['version_code' => (int)$s['latest_version_code'], 'url' => $s['update_url'], 'force' => $s['force_update'] === '1'],
-        'device' => ['blocked' => $blocked],
+        'device' => [
+            'blocked' => $blocked,
+            'reason' => $blockReason,
+            'message' => $blockReason === 'limit'
+                ? 'Limite de aparelhos da revenda atingido. Peça para liberar uma vaga.'
+                : ($blocked ? 'Este aparelho foi bloqueado.' : ''),
+        ],
     ];
 
     $etag = '"' . substr(sha1(json_encode($payload)), 0, 20) . '"';

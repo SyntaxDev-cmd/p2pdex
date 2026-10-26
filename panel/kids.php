@@ -1,6 +1,6 @@
 <?php
 require __DIR__ . '/inc/bootstrap.php';
-require_login();
+require_admin();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $pin = preg_replace('/\D/', '', (string)($_POST['parental_pin'] ?? ''));

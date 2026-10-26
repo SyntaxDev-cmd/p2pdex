@@ -78,3 +78,19 @@ document.querySelectorAll('[data-confirm]').forEach(el => {
     });
   });
 })();
+
+// Tabelas viram cartões no celular: copia o título da coluna para cada célula
+document.querySelectorAll('.tbl table').forEach(t => {
+  const head = t.querySelector('tr');
+  if (!head) return;
+  const labels = Array.from(head.children).map(th => th.textContent.trim());
+  t.querySelectorAll('tr').forEach((tr, i) => {
+    if (i === 0) return;
+    Array.from(tr.children).forEach((td, j) => {
+      if (!td.hasAttribute('data-label') && labels[j] && td.colSpan === 1) td.setAttribute('data-label', labels[j]);
+    });
+  });
+});
+
+// Fecha o menu lateral com ESC
+document.addEventListener('keydown', e => { if (e.key === 'Escape') document.getElementById('side')?.classList.remove('open'); });
