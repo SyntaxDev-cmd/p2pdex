@@ -71,7 +71,7 @@ try {
     }
 
     $tabs = [];
-    foreach (['tv', 'sports', 'highlights', 'movies', 'series', 'kids', 'anime'] as $t) {
+    foreach (['tv', 'sports', 'highlights', 'movies', 'series', 'kids', 'anime', 'favorites'] as $t) {
         if ($s['tab_' . $t] === '1') $tabs[] = ['id' => $t, 'label' => $s['label_' . $t]];
     }
 

@@ -2,7 +2,7 @@
 require __DIR__ . '/inc/bootstrap.php';
 require_login();
 
-$tabs = ['tv' => 'TV ao vivo', 'sports' => 'Jogos (esportes ao vivo)', 'highlights' => 'Destaques', 'movies' => 'Filmes', 'series' => 'Séries', 'kids' => 'Kids', 'anime' => 'Anime'];
+$tabs = ['tv' => 'TV ao vivo', 'sports' => 'Jogos (esportes ao vivo)', 'highlights' => 'Destaques', 'movies' => 'Filmes', 'series' => 'Séries', 'kids' => 'Kids', 'anime' => 'Anime', 'favorites' => 'Favoritos (canais, filmes e séries)'];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $save = [];

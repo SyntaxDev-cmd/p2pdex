@@ -232,6 +232,7 @@ class MainActivity : BaseActivity() {
         "series" -> GridPage(this, id, "series")
         "kids" -> GridPage(this, id, "kids")
         "anime" -> GridPage(this, id, "anime")
+        "favorites" -> GridPage(this, id, "favorites")
         else -> GridPage(this, id, "movies")
     }
 
@@ -262,6 +263,7 @@ class MainActivity : BaseActivity() {
                     "anime" -> "anime"
                     "jogos", "sports" -> "sports"
                     "destaques", "highlights" -> "highlights"
+                    "favoritos", "favorites" -> "favorites"
                     else -> "tv"
                 }
                 if (tabViews.containsKey(target)) switchTab(target, focusTab = true)

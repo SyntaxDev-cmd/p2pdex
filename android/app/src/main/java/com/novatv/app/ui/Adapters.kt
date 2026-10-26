@@ -86,7 +86,7 @@ class CategoryAdapter(
         h.itemView.isSelected = position == selected
         h.lock.visibility = if (c.locked) View.VISIBLE else View.GONE
         val icon = when {
-            c.special == "fav" -> R.drawable.ic_star
+            c.special == "fav" -> R.drawable.ic_heart
             c.special == "recent" -> R.drawable.ic_refresh
             showKind -> when (c.kind) {
                 Kind.LIVE -> R.drawable.ic_tv
@@ -152,7 +152,7 @@ class ChannelAdapter(
         h.num.setTextColor(tc)
         h.name.setTextColor(tc)
         h.playing.imageTintList = tc
-        h.fav.imageTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#FFD54F"))
+        h.fav.imageTintList = android.content.res.ColorStateList.valueOf(Ui.fav)
         v.setOnClickListener {
             val p = h.bindingAdapterPosition
             if (p != RecyclerView.NO_POSITION) onClick(p, items[p])
@@ -208,11 +208,17 @@ class PosterAdapter(
 
     var items: List<PosterItem> = emptyList()
         private set
+    private var favKeys: Set<String> = Prefs.favorites().map { it.key }.toSet()
 
     @SuppressLint("NotifyDataSetChanged")
     fun submit(list: List<PosterItem>) {
         items = list
+        refreshFavs()
         notifyDataSetChanged()
+    }
+
+    fun refreshFavs() {
+        favKeys = Prefs.favorites().map { it.key }.toSet()
     }
 
     class VH(v: View) : RecyclerView.ViewHolder(v) {
@@ -223,6 +229,7 @@ class PosterAdapter(
         val rating: TextView = v.findViewById(R.id.rating)
         val progress: ProgressBar = v.findViewById(R.id.progress)
         val focusFrame: View = v.findViewById(R.id.focusFrame)
+        val fav: ImageView = v.findViewById(R.id.fav)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
@@ -239,6 +246,11 @@ class PosterAdapter(
         h.progress.progressTintList = android.content.res.ColorStateList.valueOf(Ui.primary)
         h.title.setTextColor(Color.WHITE)
         h.badge.setTextColor(Color.WHITE)
+        h.fav.background = android.graphics.drawable.GradientDrawable().apply {
+            shape = android.graphics.drawable.GradientDrawable.OVAL
+            setColor(Ui.withAlpha(Color.BLACK, 170))
+        }
+        h.fav.imageTintList = android.content.res.ColorStateList.valueOf(Ui.fav)
         Ui.focusZoom(v, 1.08f)
         v.setOnClickListener {
             val p = h.bindingAdapterPosition
@@ -273,6 +285,7 @@ class PosterAdapter(
         h.rating.text = "★ ${it.rating}"
         h.progress.visibility = if (it.progress >= 0) View.VISIBLE else View.GONE
         if (it.progress >= 0) h.progress.progress = it.progress
+        h.fav.visibility = if (it.media != null && it.media.key in favKeys) View.VISIBLE else View.GONE
     }
 
     override fun getItemCount() = items.size

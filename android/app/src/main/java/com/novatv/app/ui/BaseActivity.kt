@@ -31,9 +31,12 @@ abstract class BaseActivity : Activity(), CoroutineScope by MainScope() {
 
     open val keepScreenOn: Boolean = false
 
+    /** Tela cheia sem barras. Telas com digitação no celular desligam para o teclado não cobrir os campos. */
+    open val immersiveMode: Boolean = true
+
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (hasFocus) immersive()
+        if (hasFocus && immersiveMode) immersive()
     }
 
     @Suppress("DEPRECATION")

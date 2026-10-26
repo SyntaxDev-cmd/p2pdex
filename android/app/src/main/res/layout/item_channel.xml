@@ -54,6 +54,6 @@
         android:layout_height="14dp"
         android:layout_marginStart="6dp"
         android:duplicateParentState="true"
-        android:src="@drawable/ic_star"
+        android:src="@drawable/ic_heart"
         android:visibility="gone" />
 </LinearLayout>

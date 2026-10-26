@@ -123,7 +123,7 @@ require __DIR__ . '/inc/header.php';
           <div class="tlogo"><?php if ($s['logo']): ?><img src="<?= e(asset_url($s['logo'])) ?>" alt=""><?php endif; ?><span data-name><?= e($s['app_name']) ?></span></div>
           <div class="ticons"><i></i><i></i><i></i><i></i><b>10:24</b></div>
         </div>
-        <div class="ttabs"><span class="on"><?= e($s['label_tv']) ?></span><span><?= e($s['label_sports']) ?></span><span><?= e($s['label_highlights']) ?></span><span><?= e($s['label_movies']) ?></span><span><?= e($s['label_series']) ?></span><span class="kids"><?= e($s['label_kids']) ?></span><span><?= e($s['label_anime']) ?></span></div>
+        <div class="ttabs"><span class="on"><?= e($s['label_tv']) ?></span><span><?= e($s['label_sports']) ?></span><span><?= e($s['label_highlights']) ?></span><span><?= e($s['label_movies']) ?></span><span><?= e($s['label_series']) ?></span><span class="kids"><?= e($s['label_kids']) ?></span><span><?= e($s['label_anime']) ?></span><span><?= e($s['label_favorites']) ?></span></div>
         <div class="tbody">
           <div class="tlist"><h4>Lista de Canais</h4><div>1 Canal Notícias</div><div class="on">2 Canal Esportes HD</div><div>3 Filmes 24h</div><div>4 Desenhos Kids</div><div>5 Documentários</div><div>6 Música Hits</div></div>
           <div class="tplayer"><div class="tvideo"></div><div class="tinfo"><span>Canal Esportes HD</span><small>10:00–11:50 Programa ao vivo</small></div></div>

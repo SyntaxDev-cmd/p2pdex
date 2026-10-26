@@ -161,6 +161,7 @@ function default_settings(): array
         'tab_series' => '1', 'label_series' => 'SÉRIES',
         'tab_kids' => '1', 'label_kids' => 'KIDS',
         'tab_anime' => '1', 'label_anime' => 'ANIME',
+        'tab_favorites' => '1', 'label_favorites' => 'FAVORITOS',
         'start_tab' => 'tv',
         // Kids / Anime / Adulto
         'kids_keywords' => 'kids, infantil, infantis, criança, crianca, desenho, desenhos, cartoon, disney, nick, nickelodeon, discovery kids, gloob, cartoonito, animação, animacao, family, família, familia',

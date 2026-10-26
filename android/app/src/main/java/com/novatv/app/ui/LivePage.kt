@@ -67,6 +67,7 @@ class LivePage(act: MainActivity, id: String, private val mode: String) : Page(a
     private val nowEpg: TextView = view.findViewById(R.id.nowEpg)
     private val nextEpg: TextView = view.findViewById(R.id.nextEpg)
     private val epgProgress: ProgressBar = view.findViewById(R.id.epgProgress)
+    private val btnFav: ImageView = view.findViewById(R.id.btnFav)
 
     private val cats = CategoryAdapter(portrait, ::onCategory, onRight = { focusChannels() })
     private val channels = ChannelAdapter(::onChannel, ::onChannelLong, onLeft = { focusCategories() })
@@ -97,7 +98,18 @@ class LivePage(act: MainActivity, id: String, private val mode: String) : Page(a
         previewBox.foreground = Ui.posterFrame(act)
         previewBox.setOnClickListener { openFull() }
         Ui.focusZoom(previewBox, 1.02f)
-        view.findViewById<View>(R.id.btnFull).setOnClickListener { openFull() }
+        val roundBg = { android.graphics.drawable.GradientDrawable().apply {
+            shape = android.graphics.drawable.GradientDrawable.OVAL
+            setColor(Ui.withAlpha(Color.BLACK, 150))
+        } }
+        view.findViewById<ImageView>(R.id.btnFull).apply {
+            background = roundBg()
+            setOnClickListener { openFull() }
+        }
+        btnFav.background = roundBg()
+        btnFav.setOnClickListener { playing?.let { m -> toggleFav(m) } }
+        if (Ui.isTv) view.findViewById<TextView>(R.id.chHint)?.text = "OK: assistir  •  Segure OK: favoritar"
+        else view.findViewById<TextView>(R.id.chHint)?.text = "Toque: assistir  •  Toque e segure: favoritar"
 
         catList.layoutManager = LinearLayoutManager(act, if (portrait) RecyclerView.HORIZONTAL else RecyclerView.VERTICAL, false)
         catList.adapter = cats
@@ -136,7 +148,7 @@ class LivePage(act: MainActivity, id: String, private val mode: String) : Page(a
             try {
                 val list = mutableListOf<Category>()
                 if (mode == "tv") {
-                    list.add(Category("fav", "★ Favoritos", Kind.LIVE, special = "fav"))
+                    list.add(Category("fav", "Favoritos", Kind.LIVE, special = "fav"))
                     list.add(Category("recent", "Assistidos recentemente", Kind.LIVE, special = "recent"))
                     list.addAll(Repo.categories(Kind.LIVE))
                 } else {
@@ -217,12 +229,23 @@ class LivePage(act: MainActivity, id: String, private val mode: String) : Page(a
         play(m)
     }
 
-    private fun onChannelLong(pos: Int, m: Media) {
+    private fun onChannelLong(pos: Int, m: Media) = toggleFav(m)
+
+    private fun toggleFav(m: Media) {
         val added = Prefs.toggleFavorite(m)
-        Dialogs.toast(act, if (added) "★ Adicionado aos favoritos" else "Removido dos favoritos")
+        Dialogs.toast(act, if (added) "♥ Adicionado aos favoritos" else "Removido dos favoritos")
         channels.refreshFavs()
-        channels.notifyItemChanged(pos)
+        channels.notifyDataSetChanged()
+        updateFavButton()
         if (currentCat?.special == "fav") openCategory(currentCat!!)
+    }
+
+    private fun updateFavButton() {
+        val m = playing
+        btnFav.visibility = if (m == null) View.GONE else View.VISIBLE
+        val fav = m != null && Prefs.isFavorite(m)
+        btnFav.imageTintList = ColorStateList.valueOf(if (fav) Ui.fav else Color.WHITE)
+        btnFav.alpha = if (fav) 1f else 0.85f
     }
 
     private fun play(m: Media) {
@@ -230,6 +253,7 @@ class LivePage(act: MainActivity, id: String, private val mode: String) : Page(a
         retries = 0
         Prefs.addRecent(m)
         channels.setPlaying(m.key)
+        updateFavButton()
         nowName.text = m.name
         nowEpg.text = ""
         nextEpg.text = ""

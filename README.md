@@ -17,8 +17,10 @@ Projeto completo com:
 | FILMES / SÉRIES | Grade de cartazes, detalhes com sinopse, nota, elenco e fundo; temporadas e episódios |
 | KIDS | Junta canais, filmes e séries infantis; visual colorido; PIN opcional para sair do modo Kids |
 | ANIME | Separado automaticamente por palavras-chave |
+| Login | Responsivo: TV e tablet (marca + formulário), celular deitado (compacto com rolagem), celular em pé; mostrar/ocultar senha, escolha de servidor, erros claros, teclado não cobre os campos |
 | Busca | Canais, filmes e séries ao mesmo tempo, sem diferenciar acento |
 | Player | Troca de canal com ↑/↓, lista de canais sobreposta (OK), formato de tela, faixas de áudio e legenda, retomar de onde parou, próximo episódio automático, reconexão automática |
+| Favoritos | Aba própria (canais, filmes e séries), coração ♥ nos cartazes e na lista de canais, botão ♥ na prévia, no player e nos detalhes; segurar OK em qualquer item; separados por conta |
 | Controle parental | Categorias adultas bloqueadas por PIN (o cliente pode trocar o PIN) |
 | Conta | Validade, telas em uso, troca de PIN e logout |
 
@@ -102,5 +104,6 @@ android/               App Kotlin
 | OK no player ao vivo | Lista de canais |
 | ← → no player ao vivo | Informações e EPG |
 | MENU | Busca (na tela principal) / formato de tela (no player) |
-| Botões coloridos | Vermelho = TV, Verde = Filmes, Amarelo = Séries, Azul = Kids |
-| Segurar OK | Favoritar |
+| Botões coloridos (tela principal) | Vermelho = TV, Verde = Filmes, Amarelo = Séries, Azul = Kids |
+| Vermelho / Bookmark (no player) | Favoritar o que está tocando |
+| Segurar OK | Favoritar canal, filme ou série |

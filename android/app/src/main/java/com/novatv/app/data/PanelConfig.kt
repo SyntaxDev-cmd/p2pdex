@@ -51,7 +51,7 @@ class PanelConfig(val json: JSONObject) {
     val tabs: List<Tab> = json.optJSONArray("tabs")?.let { arr ->
         (0 until arr.length()).mapNotNull { i -> arr.optJSONObject(i)?.let { Tab(it.optString("id"), it.optString("label")) } }
     } ?: listOf(Tab("tv", "TV"), Tab("sports", "JOGOS"), Tab("highlights", "DESTAQUES"), Tab("movies", "FILMES"),
-        Tab("series", "SÉRIES"), Tab("kids", "KIDS"), Tab("anime", "ANIME"))
+        Tab("series", "SÉRIES"), Tab("kids", "KIDS"), Tab("anime", "ANIME"), Tab("favorites", "FAVORITOS"))
 
     val servers: List<ServerDef> = json.optJSONArray("servers")?.let { arr ->
         (0 until arr.length()).mapNotNull { i ->

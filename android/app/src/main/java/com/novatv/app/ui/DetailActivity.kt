@@ -182,11 +182,14 @@ class DetailActivity : BaseActivity() {
         addButton(play)
         if (resumePos > 0) addButton(Dialogs.button(this, "Do início", false) { playMovie(restart = true) })
         val fav = Prefs.isFavorite(media)
-        addButton(Dialogs.button(this, if (fav) "♥  Na minha lista" else "♡  Minha lista", false) {
+        val favBtn = Dialogs.button(this, if (fav) "♥  Favorito" else "♡  Favoritar", false) {
             val added = Prefs.toggleFavorite(media)
-            Dialogs.toast(this, if (added) "Adicionado à Minha lista" else "Removido da Minha lista")
+            Dialogs.toast(this, if (added) "♥ Adicionado aos favoritos" else "Removido dos favoritos")
             renderButtons()
-        })
+            buttons.getChildAt(buttons.childCount - 1)?.requestFocus()
+        }
+        if (fav) favBtn.setTextColor(Ui.textColors(Ui.fav, Ui.focusText))
+        addButton(favBtn)
         play.requestFocus()
     }
 

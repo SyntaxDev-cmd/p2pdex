@@ -1,95 +1,126 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/form"
-    android:layout_width="380dp"
+    android:layout_width="400dp"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:padding="26dp">
+    android:paddingStart="28dp"
+    android:paddingTop="26dp"
+    android:paddingEnd="28dp"
+    android:paddingBottom="22dp">
+
+    <ImageView
+        android:id="@+id/formLogo"
+        android:layout_width="wrap_content"
+        android:layout_height="48dp"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginBottom="14dp"
+        android:adjustViewBounds="true"
+        android:maxWidth="180dp"
+        android:scaleType="fitCenter"
+        android:src="@mipmap/ic_launcher"
+        android:visibility="gone" />
 
     <TextView
+        android:id="@+id/formTitle"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="Entrar"
-        android:textSize="24sp"
+        android:textSize="26sp"
         android:textStyle="bold" />
 
     <TextView
         android:id="@+id/subtitle"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="18dp"
-        android:alpha="0.75"
+        android:layout_marginTop="2dp"
+        android:layout_marginBottom="20dp"
         android:text="Use o usuário e a senha da sua assinatura"
         android:textSize="14sp" />
 
     <TextView
         android:id="@+id/server"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="12dp"
+        style="@style/LoginField"
         android:clickable="true"
-        android:drawablePadding="10dp"
+        android:drawableStart="@drawable/ic_server"
+        android:drawableEnd="@drawable/ic_chevron_down"
         android:focusable="true"
-        android:paddingStart="16dp"
-        android:paddingTop="13dp"
-        android:paddingEnd="16dp"
-        android:paddingBottom="13dp"
-        android:singleLine="true"
-        android:textSize="16sp" />
+        android:gravity="center_vertical" />
 
     <EditText
         android:id="@+id/dns"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="12dp"
+        style="@style/LoginField"
+        android:drawableStart="@drawable/ic_link"
         android:hint="DNS do servidor (http://...)"
         android:imeOptions="actionNext"
         android:inputType="textUri"
-        android:paddingStart="16dp"
-        android:paddingTop="13dp"
-        android:paddingEnd="16dp"
-        android:paddingBottom="13dp"
-        android:singleLine="true"
-        android:textSize="16sp"
         android:visibility="gone" />
 
     <EditText
         android:id="@+id/user"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="12dp"
+        style="@style/LoginField"
+        android:autofillHints="username"
+        android:drawableStart="@drawable/ic_person"
         android:hint="Usuário"
         android:imeOptions="actionNext"
-        android:inputType="text"
-        android:paddingStart="16dp"
-        android:paddingTop="13dp"
-        android:paddingEnd="16dp"
-        android:paddingBottom="13dp"
-        android:singleLine="true"
-        android:textSize="16sp" />
+        android:inputType="text" />
 
-    <EditText
-        android:id="@+id/pass"
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <EditText
+            android:id="@+id/pass"
+            style="@style/LoginField"
+            android:layout_marginBottom="0dp"
+            android:autofillHints="password"
+            android:drawableStart="@drawable/ic_lock"
+            android:hint="Senha"
+            android:imeOptions="actionDone"
+            android:inputType="textPassword"
+            android:paddingEnd="52dp" />
+
+        <ImageView
+            android:id="@+id/passToggle"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_gravity="end|center_vertical"
+            android:layout_marginEnd="6dp"
+            android:clickable="true"
+            android:contentDescription="Mostrar senha"
+            android:focusable="true"
+            android:padding="9dp"
+            android:src="@drawable/ic_eye" />
+    </FrameLayout>
+
+    <LinearLayout
+        android:id="@+id/errorBox"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="Senha"
-        android:imeOptions="actionDone"
-        android:inputType="textPassword"
-        android:paddingStart="16dp"
-        android:paddingTop="13dp"
-        android:paddingEnd="16dp"
-        android:paddingBottom="13dp"
-        android:singleLine="true"
-        android:textSize="16sp" />
+        android:layout_marginTop="12dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="12dp"
+        android:paddingTop="10dp"
+        android:paddingEnd="12dp"
+        android:paddingBottom="10dp"
+        android:visibility="gone">
 
-    <TextView
-        android:id="@+id/error"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"
-        android:textColor="#FFFF8A80"
-        android:textSize="14sp"
-        android:visibility="gone" />
+        <ImageView
+            android:id="@+id/errorIcon"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:layout_marginEnd="10dp"
+            android:src="@drawable/ic_error" />
+
+        <TextView
+            android:id="@+id/error"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textColor="#FFFFFFFF"
+            android:textSize="14sp" />
+    </LinearLayout>
 
     <FrameLayout
         android:layout_width="match_parent"
@@ -99,21 +130,20 @@
         <TextView
             android:id="@+id/login"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="52dp"
             android:clickable="true"
             android:focusable="true"
             android:gravity="center"
-            android:padding="14dp"
+            android:letterSpacing="0.08"
             android:text="ENTRAR"
             android:textSize="17sp"
             android:textStyle="bold" />
 
         <ProgressBar
             android:id="@+id/loading"
-            android:layout_width="28dp"
-            android:layout_height="28dp"
+            android:layout_width="26dp"
+            android:layout_height="26dp"
             android:layout_gravity="center"
-            android:indeterminateTint="#FFFFFFFF"
             android:visibility="gone" />
     </FrameLayout>
 
@@ -122,7 +152,6 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
-        android:alpha="0.7"
         android:gravity="center"
         android:textSize="13sp" />
 </LinearLayout>

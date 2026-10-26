@@ -70,8 +70,10 @@ class HighlightsPage(act: MainActivity, id: String) : Page(act, id) {
     }
 
     private var resumeRow: Pair<View, PosterAdapter>? = null
+    private val rowAdapters = mutableListOf<PosterAdapter>()
 
     private fun refreshResume() {
+        rowAdapters.forEach { it.refreshFavs(); it.notifyDataSetChanged() }
         val items = resumeItems()
         resumeRow?.let { (container, adapter) ->
             adapter.submit(items)
@@ -87,6 +89,7 @@ class HighlightsPage(act: MainActivity, id: String) : Page(act, id) {
     private fun load() {
         job?.cancel()
         column.removeAllViews()
+        rowAdapters.clear()
         bannerList = null
         firstRow = null
         loading.visibility = View.VISIBLE
@@ -167,7 +170,7 @@ class HighlightsPage(act: MainActivity, id: String) : Page(act, id) {
             clipToPadding = false
         }
         box.addView(title(name))
-        val adapter = PosterAdapter({ _, item -> open(item) }, fixedWidthDp = if (kind == Kind.LIVE) 150 else if (portrait) 108 else 122)
+        val adapter = PosterAdapter({ _, item -> open(item) }, onLong = { pos, item -> toggleFav(pos, item) }, fixedWidthDp = if (kind == Kind.LIVE) 150 else if (portrait) 108 else 122)
         val rv = RecyclerView(act).apply {
             layoutManager = LinearLayoutManager(act, RecyclerView.HORIZONTAL, false)
             this.adapter = adapter
@@ -179,6 +182,7 @@ class HighlightsPage(act: MainActivity, id: String) : Page(act, id) {
             isHorizontalScrollBarEnabled = false
         }
         adapter.submit(items)
+        rowAdapters.add(adapter)
         box.addView(rv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         column.addView(box, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         if (firstRow == null && items.isNotEmpty()) firstRow = rv
@@ -218,6 +222,13 @@ class HighlightsPage(act: MainActivity, id: String) : Page(act, id) {
                 rv.smoothScrollToPosition(pos)
             }
         }
+    }
+
+    private fun toggleFav(pos: Int, item: PosterItem) {
+        val m = item.media ?: return
+        val added = Prefs.toggleFavorite(m)
+        Dialogs.toast(act, if (added) "♥ Adicionado aos favoritos" else "Removido dos favoritos")
+        rowAdapters.forEach { it.refreshFavs(); it.notifyDataSetChanged() }
     }
 
     private fun open(item: PosterItem) {

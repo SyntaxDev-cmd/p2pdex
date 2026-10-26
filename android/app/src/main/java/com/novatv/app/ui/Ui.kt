@@ -32,6 +32,8 @@ object Ui {
     var text = Color.WHITE; private set
     var text2 = Color.parseColor("#F3C9CD"); private set
     var kids = Color.parseColor("#FFB300"); private set
+    /** Cor do coração de favorito. */
+    val fav = Color.parseColor("#FF4D6D")
     var radiusDp = 12; private set
     var scale = 100; private set
 

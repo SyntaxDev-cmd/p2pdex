@@ -43,11 +43,12 @@ class GridPage(act: MainActivity, id: String, private val mode: String) : Page(a
             "kids" -> "🧸 Kids"
             "anime" -> "Anime"
             "series" -> "Séries"
+            "favorites" -> "♥ Favoritos"
             else -> "Filmes"
         }
         if (kids) headerView?.background = Ui.rounded(Ui.kids, Ui.radius(act) * 0.8f)
         empty.setTextColor(Ui.text2)
-        cats.showKind = kids || mode == "anime"
+        cats.showKind = kids || mode == "anime" || mode == "favorites"
         catList.layoutManager = LinearLayoutManager(act, if (portrait) RecyclerView.HORIZONTAL else RecyclerView.VERTICAL, false)
         catList.adapter = cats
         catList.itemAnimator = null
@@ -70,6 +71,11 @@ class GridPage(act: MainActivity, id: String, private val mode: String) : Page(a
 
     override fun onShow() {
         if (!loaded) load()
+        else {
+            // favoritos podem ter mudado em outra tela
+            posters.refreshFavs()
+            current?.takeIf { it.special == "fav" }?.let { open(it, keepScroll = true) } ?: posters.notifyDataSetChanged()
+        }
     }
 
     override fun reload() {
@@ -85,10 +91,15 @@ class GridPage(act: MainActivity, id: String, private val mode: String) : Page(a
             setLoading(true)
             try {
                 val list: List<Category> = when (mode) {
-                    "movies" -> listOf(Category("fav", "★ Favoritos", Kind.MOVIE, special = "fav")) + Repo.categories(Kind.MOVIE)
-                    "series" -> listOf(Category("fav", "★ Favoritos", Kind.SERIES, special = "fav")) + Repo.categories(Kind.SERIES)
+                    "movies" -> listOf(Category("fav", "Favoritos", Kind.MOVIE, special = "fav")) + Repo.categories(Kind.MOVIE)
+                    "series" -> listOf(Category("fav", "Favoritos", Kind.SERIES, special = "fav")) + Repo.categories(Kind.SERIES)
                     "kids" -> Repo.kidsCategories()
                     "anime" -> Repo.animeCategories()
+                    "favorites" -> listOf(
+                        Category("fav", "Canais", Kind.LIVE, special = "fav"),
+                        Category("fav", "Filmes", Kind.MOVIE, special = "fav"),
+                        Category("fav", "Séries", Kind.SERIES, special = "fav"),
+                    )
                     else -> emptyList()
                 }
                 val last = Prefs.lastCategory(id)
@@ -129,18 +140,19 @@ class GridPage(act: MainActivity, id: String, private val mode: String) : Page(a
         open(c)
     }
 
-    private fun open(c: Category) {
+    private fun open(c: Category, keepScroll: Boolean = false) {
         current = c
-        if (c.special == null) Prefs.setLastCategory(id, c.key)
+        if (c.special == null || mode == "favorites") Prefs.setLastCategory(id, c.key)
         job?.cancel()
         job = act.launch {
-            setLoading(true)
+            if (!keepScroll) setLoading(true)
             try {
                 val items = Repo.items(c)
                 posters.submit(items.map { PosterAdapter.from(it, showKind = kids || mode == "anime") })
-                grid.scrollToPosition(0)
+                if (!keepScroll) grid.scrollToPosition(0)
                 setLoading(false)
-                if (items.isEmpty()) showEmpty(if (c.special == "fav") "Segure OK em um título para favoritar." else "Nenhum título nesta categoria.")
+                if (items.isEmpty()) showEmpty(if (c.special == "fav") favEmpty(c.kind) else "Nenhum título nesta categoria.")
+                else empty.visibility = View.GONE
             } catch (e: Exception) {
                 setLoading(false)
                 act.handleError(e)
@@ -177,8 +189,19 @@ class GridPage(act: MainActivity, id: String, private val mode: String) : Page(a
     private fun onLong(pos: Int, item: PosterItem) {
         val m: Media = item.media ?: return
         val added = Prefs.toggleFavorite(m)
-        Dialogs.toast(act, if (added) "★ Adicionado aos favoritos" else "Removido dos favoritos")
-        if (current?.special == "fav") current?.let { open(it) }
+        Dialogs.toast(act, if (added) "♥ Adicionado aos favoritos" else "Removido dos favoritos")
+        posters.refreshFavs()
+        if (current?.special == "fav") current?.let { open(it, keepScroll = true) } else posters.notifyItemChanged(pos)
+    }
+
+    private fun favEmpty(kind: Kind): String {
+        val what = when (kind) {
+            Kind.LIVE -> "canal"
+            Kind.MOVIE -> "filme"
+            Kind.SERIES -> "série"
+        }
+        val how = if (Ui.isTv) "segure OK" else "toque e segure"
+        return "Nenhum favorito aqui ainda.\nEm qualquer $what, $how ou use o botão ♥ para salvar."
     }
 
     private fun focusGrid(): Boolean {

@@ -23,6 +23,8 @@ import kotlinx.coroutines.launch
 
 class SearchActivity : BaseActivity() {
 
+    override val immersiveMode: Boolean get() = Ui.isTv
+
     private lateinit var query: EditText
     private lateinit var status: TextView
     private lateinit var loading: ProgressBar

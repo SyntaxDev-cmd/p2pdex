@@ -70,7 +70,7 @@ class PlayerActivity : BaseActivity() {
         },
         onLong = { pos, m ->
             val added = Prefs.toggleFavorite(m)
-            Dialogs.toast(this, if (added) "★ Favoritado" else "Removido dos favoritos")
+            Dialogs.toast(this, if (added) "♥ Adicionado aos favoritos" else "Removido dos favoritos")
             refreshOverlayFavs(pos)
         },
     )
@@ -99,6 +99,7 @@ class PlayerActivity : BaseActivity() {
         infoProgress.progressTintList = ColorStateList.valueOf(Ui.primary)
         overlay.background = Ui.rounded(Ui.withAlpha(Ui.surfaceSolid, 225), 0f)
         findViewById<TextView>(R.id.chOverlayTitle).apply {
+            text = if (Ui.isTv) "Canais  •  segure OK para ♥" else "Canais  •  toque e segure para ♥"
             background = Ui.rounded(Ui.primary, Ui.radius(this@PlayerActivity) * 0.8f)
             setTextColor(Color.WHITE)
         }
@@ -107,7 +108,7 @@ class PlayerActivity : BaseActivity() {
         nextBanner.setOnClickListener { playNext() }
         errorMsg.background = Ui.rounded(Ui.withAlpha(Color.BLACK, 210), Ui.radius(this))
 
-        listOf(R.id.btnList, R.id.btnAspect).forEach { id ->
+        listOf(R.id.btnFav, R.id.btnList, R.id.btnAspect).forEach { id ->
             findViewById<ImageView>(id).apply {
                 background = Ui.iconButton(this@PlayerActivity)
                 imageTintList = Ui.textColors(Color.WHITE, Ui.focusText)
@@ -115,6 +116,7 @@ class PlayerActivity : BaseActivity() {
         }
         findViewById<View>(R.id.btnAspect).setOnClickListener { cycleAspect() }
         findViewById<View>(R.id.btnList).setOnClickListener { showOverlay() }
+        findViewById<View>(R.id.btnFav).setOnClickListener { toggleCurrentFav() }
 
         overlayList.layoutManager = LinearLayoutManager(this)
         overlayList.adapter = overlayAdapter
@@ -195,6 +197,7 @@ class PlayerActivity : BaseActivity() {
         if (start > 0) Dialogs.toast(this, "Continuando de onde você parou")
         if (e.kind == Kind.LIVE) e.media?.let { Prefs.addRecent(it) }
         overlayAdapter.setPlaying(e.media?.key)
+        updateFavButton()
         showInfo()
         startSaving()
     }
@@ -326,6 +329,7 @@ class PlayerActivity : BaseActivity() {
         if (e.kind != Kind.LIVE && !live) return
         infoBar.visibility = View.VISIBLE
         infoBar.alpha = 1f
+        showLiveButtons(true)
         infoJob?.cancel()
         infoJob = launch {
             val m = e.media
@@ -344,11 +348,13 @@ class PlayerActivity : BaseActivity() {
             }
             delay(5000)
             infoBar.animate().alpha(0f).setDuration(300).withEndAction { infoBar.visibility = View.GONE }.start()
+            if (overlay.visibility != View.VISIBLE && topRight.findFocus() == null) showLiveButtons(false)
         }
     }
 
     private fun showOverlay() {
         if (!live) return
+        showLiveButtons(true)
         overlay.visibility = View.VISIBLE
         overlay.translationX = -overlay.width.toFloat().coerceAtLeast(200f)
         overlay.animate().translationX(0f).setDuration(200).start()
@@ -364,12 +370,47 @@ class PlayerActivity : BaseActivity() {
             overlay.visibility = View.GONE
             overlay.translationX = 0f
         }.start()
+        showLiveButtons(false)
         playerView.requestFocus()
     }
 
     private fun refreshOverlayFavs(pos: Int) {
         overlayAdapter.refreshFavs()
         overlayAdapter.notifyItemChanged(pos)
+    }
+
+    /** Item favoritável do que está tocando: canal, filme ou a série do episódio. */
+    private fun currentFavTarget() = PlayQueue.current?.let { it.series ?: it.media }
+
+    private fun toggleCurrentFav() {
+        val m = currentFavTarget() ?: return
+        val added = Prefs.toggleFavorite(m)
+        Dialogs.toast(this, if (added) "♥ ${m.name} adicionado aos favoritos" else "Removido dos favoritos")
+        updateFavButton()
+        overlayAdapter.refreshFavs()
+        overlayAdapter.notifyDataSetChanged()
+    }
+
+    private fun updateFavButton() {
+        val m = currentFavTarget()
+        val btn = findViewById<ImageView>(R.id.btnFav)
+        btn.visibility = if (m == null) View.GONE else View.VISIBLE
+        val fav = m != null && Prefs.isFavorite(m)
+        btn.imageTintList = if (fav) ColorStateList(
+            arrayOf(intArrayOf(android.R.attr.state_focused), intArrayOf()), intArrayOf(Ui.fav, Ui.fav),
+        ) else Ui.textColors(Color.WHITE, Ui.focusText)
+    }
+
+    /** No ao vivo os botões aparecem junto com as informações / lista. */
+    private fun showLiveButtons(show: Boolean) {
+        if (!live) return
+        topRight.animate().cancel()
+        if (show) {
+            topRight.visibility = View.VISIBLE
+            topRight.alpha = 1f
+        } else {
+            topRight.animate().alpha(0f).setDuration(250).withEndAction { topRight.visibility = View.GONE }.start()
+        }
     }
 
     private fun cycleAspect() {
@@ -382,6 +423,10 @@ class PlayerActivity : BaseActivity() {
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.action != KeyEvent.ACTION_DOWN) return super.dispatchKeyEvent(event)
         val code = event.keyCode
+        if (code == KeyEvent.KEYCODE_PROG_RED || code == KeyEvent.KEYCODE_BOOKMARK) {
+            toggleCurrentFav()
+            return true
+        }
         if (code == KeyEvent.KEYCODE_MENU || code == KeyEvent.KEYCODE_INFO && !live) {
             cycleAspect()
             return true

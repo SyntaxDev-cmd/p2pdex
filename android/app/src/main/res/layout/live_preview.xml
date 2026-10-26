@@ -45,13 +45,25 @@
             android:visibility="gone" />
 
         <ImageView
+            android:id="@+id/btnFav"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
+            android:layout_gravity="bottom|end"
+            android:layout_marginEnd="50dp"
+            android:layout_marginBottom="8dp"
+            android:contentDescription="Favoritar"
+            android:padding="7dp"
+            android:src="@drawable/ic_heart"
+            android:visibility="gone" />
+
+        <ImageView
             android:id="@+id/btnFull"
             android:layout_width="34dp"
             android:layout_height="34dp"
             android:layout_gravity="bottom|end"
             android:layout_margin="8dp"
-            android:background="#66000000"
-            android:padding="6dp"
+            android:contentDescription="Tela cheia"
+            android:padding="7dp"
             android:src="@drawable/ic_fullscreen" />
     </com.novatv.app.ui.AspectFrame>
 

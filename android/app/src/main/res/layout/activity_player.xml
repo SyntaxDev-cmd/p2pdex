@@ -127,6 +127,12 @@
         android:visibility="gone">
 
         <ImageView
+            android:id="@+id/btnFav"
+            style="@style/TopIcon"
+            android:contentDescription="Favoritar"
+            android:src="@drawable/ic_heart" />
+
+        <ImageView
             android:id="@+id/btnList"
             style="@style/TopIcon"
             android:src="@drawable/ic_list" />
