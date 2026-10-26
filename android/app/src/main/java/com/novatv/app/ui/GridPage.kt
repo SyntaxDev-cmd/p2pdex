@@ -69,9 +69,9 @@ class GridPage(act: MainActivity, id: String, private val mode: String) : Page(a
             view.findViewById<View>(R.id.catPanel)?.background = Ui.rounded(Ui.withAlpha(android.graphics.Color.BLACK, 70), Ui.radius(act) * 1.4f)
             cats.section = st
             posters.section = st
-            empty.setTextColor(android.graphics.Color.WHITE)
         }
-        empty.setTextColor(Ui.text2)
+        empty.setTextColor(if (section != null) android.graphics.Color.WHITE else Ui.text2)
+        if (kids) addThemeButton()
         cats.showKind = kids || mode == "anime" || mode == "favorites"
         catList.layoutManager = LinearLayoutManager(act, if (portrait) RecyclerView.HORIZONTAL else RecyclerView.VERTICAL, false)
         catList.adapter = cats
@@ -85,6 +85,48 @@ class GridPage(act: MainActivity, id: String, private val mode: String) : Page(a
                 val span = ((r - l) / Ui.dp(act, if (portrait) 112 else 128)).coerceIn(2, 9)
                 if (span != layout.spanCount) grid.post { layout.spanCount = span }
             }
+        }
+    }
+
+    /** Botão "🎨 Tema" da aba Kids (meninos, meninas ou arco-íris). */
+    private fun addThemeButton() {
+        val st = section ?: return
+        val btn = TextView(act).apply {
+            text = "🎨  Tema: " + (Sections.kidsThemes.firstOrNull { it.key == st.variant }?.label?.substringBefore(" —")?.trim() ?: "Arco-íris")
+            textSize = 14f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            gravity = android.view.Gravity.CENTER
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            setPadding(Ui.dp(act, 14), Ui.dp(act, 8), Ui.dp(act, 14), Ui.dp(act, 8))
+            val r = Ui.dp(act, 40).toFloat()
+            background = android.graphics.drawable.StateListDrawable().apply {
+                addState(intArrayOf(android.R.attr.state_focused), Ui.rounded(st.accent, r, android.graphics.Color.WHITE, Ui.dp(act, 2)))
+                addState(intArrayOf(), Ui.rounded(Ui.withAlpha(android.graphics.Color.WHITE, 45), r, Ui.withAlpha(android.graphics.Color.WHITE, 120), Ui.dp(act, 1)))
+            }
+            setTextColor(Ui.textColors(android.graphics.Color.WHITE, st.focusText))
+            isFocusable = true
+            isClickable = true
+            Ui.focusZoom(this, 1.05f)
+            setOnClickListener { act.chooseKidsTheme() }
+        }
+        val panel = view.findViewById<android.widget.LinearLayout>(R.id.catPanel)
+        if (panel != null) {
+            // TV / paisagem: logo abaixo do título, acima das categorias
+            panel.addView(btn, 1, android.widget.LinearLayout.LayoutParams(-1, -2).apply {
+                topMargin = Ui.dp(act, 6)
+                bottomMargin = Ui.dp(act, 2)
+                marginStart = Ui.dp(act, 4)
+                marginEnd = Ui.dp(act, 4)
+            })
+        } else {
+            // celular em pé: no alto da página, à direita
+            (view as? android.widget.LinearLayout)?.addView(btn, 0, android.widget.LinearLayout.LayoutParams(-2, -2).apply {
+                gravity = android.view.Gravity.END
+                topMargin = Ui.dp(act, 2)
+                bottomMargin = Ui.dp(act, 4)
+                marginEnd = Ui.dp(act, 6)
+            })
         }
     }
 
