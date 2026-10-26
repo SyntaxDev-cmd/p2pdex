@@ -129,32 +129,63 @@ object Ui {
 
     fun panel(ctx: Context): Drawable = rounded(surface, radius(ctx))
 
+    /** Mistura a cor com branco (f > 0) ou preto (f < 0). */
+    fun shade(color: Int, f: Float): Int {
+        val t = if (f >= 0) 255f else 0f
+        val k = kotlin.math.abs(f).coerceIn(0f, 1f)
+        return Color.argb(Color.alpha(color),
+            (Color.red(color) + (t - Color.red(color)) * k).toInt(),
+            (Color.green(color) + (t - Color.green(color)) * k).toInt(),
+            (Color.blue(color) + (t - Color.blue(color)) * k).toInt())
+    }
+
+    /** Degradê arredondado (botões e seleções com aspecto "premium"). */
+    fun gradient(c1: Int, c2: Int, radius: Float, strokeColor: Int = 0, strokePx: Int = 0,
+                 orientation: GradientDrawable.Orientation = GradientDrawable.Orientation.TOP_BOTTOM): GradientDrawable =
+        GradientDrawable(orientation, intArrayOf(c1, c2)).apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = radius
+            if (strokePx > 0) setStroke(strokePx, strokeColor)
+        }
+
+    /** Cor de foco: se o painel deixou o destaque branco, usa a cor principal para não "apagar" o texto. */
+    private val focusFill: Int get() = accent
+
     /** Fundo de item de lista: foco (controle remoto) > selecionado > normal. */
     fun itemBg(ctx: Context, selectedColor: Int = withAlpha(primary, 150), focusColor: Int = accent, radius: Float = radius(ctx) * 0.7f): Drawable =
         StateListDrawable().apply {
-            addState(intArrayOf(android.R.attr.state_focused), rounded(focusColor, radius))
+            val ring = withAlpha(Color.WHITE, 110)
+            addState(intArrayOf(android.R.attr.state_focused),
+                gradient(shade(focusColor, 0.12f), shade(focusColor, -0.08f), radius, ring, dp(ctx, 1), GradientDrawable.Orientation.LEFT_RIGHT))
             addState(intArrayOf(android.R.attr.state_pressed), rounded(withAlpha(focusColor, 200), radius))
-            addState(intArrayOf(android.R.attr.state_selected), rounded(selectedColor, radius))
-            addState(intArrayOf(android.R.attr.state_activated), rounded(selectedColor, radius))
+            val sel = gradient(selectedColor, withAlpha(selectedColor, (Color.alpha(selectedColor) * 0.55f).toInt()), radius,
+                withAlpha(shade(selectedColor, 0.3f), 170), dp(ctx, 1), GradientDrawable.Orientation.LEFT_RIGHT)
+            addState(intArrayOf(android.R.attr.state_selected), sel)
+            addState(intArrayOf(android.R.attr.state_activated), sel)
             addState(intArrayOf(), rounded(Color.TRANSPARENT, radius))
         }
 
-    /** Pílula das abas superiores (selecionada = contorno, foco = preenchida). */
+    /** Pílula das abas superiores (selecionada = vidro com contorno, foco = preenchida com brilho). */
     fun tabBg(ctx: Context): Drawable {
         val r = dp(ctx, 40).toFloat()
         return StateListDrawable().apply {
-            addState(intArrayOf(android.R.attr.state_focused), rounded(accent, r))
+            addState(intArrayOf(android.R.attr.state_focused),
+                gradient(shade(focusFill, 0.15f), shade(focusFill, -0.1f), r, withAlpha(Color.WHITE, 160), dp(ctx, 2)))
             addState(intArrayOf(android.R.attr.state_pressed), rounded(withAlpha(accent, 200), r))
-            addState(intArrayOf(android.R.attr.state_selected), rounded(Color.TRANSPARENT, r, text, dp(ctx, 2)))
+            addState(intArrayOf(android.R.attr.state_selected), rounded(withAlpha(Color.WHITE, 28), r, text, dp(ctx, 2)))
             addState(intArrayOf(), rounded(Color.TRANSPARENT, r))
         }
     }
 
-    /** Borda de foco para cartazes. */
+    /** Borda de foco para cartazes (contorno grosso + brilho fino por dentro). */
     fun posterFrame(ctx: Context, focusColor: Int = accent): Drawable {
         val r = radius(ctx)
+        val focused = android.graphics.drawable.LayerDrawable(arrayOf(
+            rounded(Color.TRANSPARENT, r, focusColor, dp(ctx, 3)),
+            rounded(withAlpha(Color.WHITE, 18), r, withAlpha(Color.WHITE, 120), dp(ctx, 1)),
+        )).apply { val i = dp(ctx, 3); setLayerInset(1, i, i, i, i) }
         return StateListDrawable().apply {
-            addState(intArrayOf(android.R.attr.state_focused), rounded(Color.TRANSPARENT, r, focusColor, dp(ctx, 3)))
+            addState(intArrayOf(android.R.attr.state_focused), focused)
             addState(intArrayOf(android.R.attr.state_pressed), rounded(withAlpha(Color.WHITE, 40), r, focusColor, dp(ctx, 3)))
             addState(intArrayOf(), rounded(Color.TRANSPARENT, r))
         }
@@ -163,19 +194,27 @@ object Ui {
     fun button(ctx: Context, filled: Boolean): Drawable {
         val r = dp(ctx, 40).toFloat()
         return StateListDrawable().apply {
-            addState(intArrayOf(android.R.attr.state_focused), rounded(accent, r))
+            addState(intArrayOf(android.R.attr.state_focused),
+                gradient(shade(focusFill, 0.15f), shade(focusFill, -0.12f), r, withAlpha(Color.WHITE, 200), dp(ctx, 2)))
             addState(intArrayOf(android.R.attr.state_pressed), rounded(withAlpha(accent, 210), r))
-            addState(intArrayOf(), if (filled) rounded(primary, r) else rounded(withAlpha(Color.WHITE, 30), r, withAlpha(Color.WHITE, 90), dp(ctx, 1)))
+            addState(intArrayOf(android.R.attr.state_enabled),
+                if (filled) gradient(shade(primary, 0.12f), shade(primary, -0.18f), r, withAlpha(Color.WHITE, 45), dp(ctx, 1))
+                else gradient(withAlpha(Color.WHITE, 38), withAlpha(Color.WHITE, 16), r, withAlpha(Color.WHITE, 90), dp(ctx, 1)))
+            addState(intArrayOf(), rounded(withAlpha(Color.WHITE, 25), r))
         }
     }
 
     fun iconButton(ctx: Context): Drawable = StateListDrawable().apply {
-        addState(intArrayOf(android.R.attr.state_focused), GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(accent) })
-        addState(intArrayOf(android.R.attr.state_pressed), GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(withAlpha(accent, 200)) })
-        addState(intArrayOf(), GradientDrawable().apply {
+        addState(intArrayOf(android.R.attr.state_focused), GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(shade(accent, 0.15f), shade(accent, -0.1f))).apply {
             shape = GradientDrawable.OVAL
-            setColor(surface)
-            setStroke(dp(ctx, 1), withAlpha(Color.WHITE, 50))
+            setStroke(dp(ctx, 2), withAlpha(Color.WHITE, 170))
+        })
+        addState(intArrayOf(android.R.attr.state_pressed), GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(withAlpha(accent, 200)) })
+        addState(intArrayOf(), GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(withAlpha(Color.WHITE, 30), withAlpha(Color.BLACK, 60))).apply {
+            shape = GradientDrawable.OVAL
+            setStroke(dp(ctx, 1), withAlpha(Color.WHITE, 60))
         })
     }
 
@@ -195,10 +234,11 @@ object Ui {
 
     // ---------------------------------------------------------- efeitos
 
-    private val interp = DecelerateInterpolator()
+    // tipados como TimeInterpolator: o tipo comum (BaseInterpolator) não existe no Android 5.0
+    private val interp: android.animation.TimeInterpolator = DecelerateInterpolator()
 
     /** Zoom suave + elevação ao receber foco (efeito "TV moderna"). */
-    private val bounce = android.view.animation.OvershootInterpolator(2.2f)
+    private val bounce: android.animation.TimeInterpolator = android.view.animation.OvershootInterpolator(2.2f)
 
     fun focusZoom(v: View, zoom: Float = 1.06f, bouncy: Boolean = false, extra: ((Boolean) -> Unit)? = null) {
         v.setOnFocusChangeListener { view, has ->

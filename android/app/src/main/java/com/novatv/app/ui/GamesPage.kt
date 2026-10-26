@@ -44,6 +44,13 @@ class GamesPage(act: MainActivity, id: String) : Page(act, id) {
     private val grid = RecyclerView(act)
     private val loading = ProgressBar(act)
     private val empty = TextView(act)
+    private val updated = TextView(act).apply {
+        textSize = 12f
+        setTextColor(Ui.withAlpha(Color.WHITE, 170))
+        setPadding(Ui.dp(act, 4), 0, 0, 0)
+        visibility = View.GONE
+    }
+    private var failed = false
     private val adapter = GameAdapter()
     private var all: List<Game> = emptyList()
     private var filter: String = "today"
@@ -56,6 +63,7 @@ class GamesPage(act: MainActivity, id: String) : Page(act, id) {
     init {
         val pad = Ui.dp(act, if (portrait) 10 else 22)
         root.setPadding(pad, Ui.dp(act, 2), pad, 0)
+        root.addView(updated, LinearLayout.LayoutParams(-2, -2).apply { bottomMargin = Ui.dp(act, 2) })
         root.addView(SafeHorizontalScrollView(act).apply {
             isHorizontalScrollBarEnabled = false
             clipToPadding = false
@@ -86,13 +94,18 @@ class GamesPage(act: MainActivity, id: String) : Page(act, id) {
         if (showingChannels) sportsPage?.onShow()
         if (!loaded) load(false)
         tick?.cancel()
-        // atualiza "AO VIVO" / contagem a cada minuto e recarrega a lista a cada 5
+        // lista antiga ao voltar para a aba: busca de novo na hora
+        if (loaded && System.currentTimeMillis() - Games.updatedAt > 90_000) load(true)
+        // atualiza "AO VIVO" / contagem a cada 30 s e puxa a API de novo a cada 2 min
         tick = act.launch {
             var n = 0
             while (isActive) {
-                delay(60_000)
+                delay(30_000)
                 n++
-                if (n % 5 == 0) load(true) else adapter.notifyItemRangeChanged(0, adapter.itemCount)
+                if (n % 4 == 0) load(true) else {
+                    adapter.notifyItemRangeChanged(0, adapter.itemCount)
+                    showUpdated()
+                }
             }
         }
     }
@@ -122,12 +135,36 @@ class GamesPage(act: MainActivity, id: String) : Page(act, id) {
         job?.cancel()
         job = act.launch {
             if (all.isEmpty()) loading.visibility = View.VISIBLE
-            all = runCatching { Games.load(force) }.getOrDefault(all)
+            val r = runCatching { Games.load(force) }
+            r.exceptionOrNull()?.let { if (it is kotlinx.coroutines.CancellationException) throw it }
+            failed = r.isFailure
+            val fresh = r.getOrNull()
+            // só redesenha se mudou algo (não perde o foco do controle a cada atualização)
+            val changed = fresh != null && fresh != all
+            if (fresh != null) all = fresh
             loading.visibility = View.GONE
+            val first = !loaded
             loaded = true
-            buildChips()
-            apply()
+            showUpdated()
+            if (first || changed) {
+                val focusedChip = chipsBox.findFocus() != null
+                buildChips()
+                apply()
+                if (focusedChip) chipsBox.getChildAt(0)?.requestFocus()
+            } else adapter.notifyItemRangeChanged(0, adapter.itemCount)
         }
+    }
+
+    private fun showUpdated() {
+        val at = Games.updatedAt
+        if (at <= 0 && !failed) { updated.visibility = View.GONE; return }
+        val live = all.count { it.liveStatus() == "live" }
+        val time = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(if (at > 0) at else System.currentTimeMillis()))
+        updated.text = buildString {
+            append(if (failed) "⚠  Sem conexão com a API de jogos · última lista às $time" else "⟳  Atualizado às $time · atualiza sozinho")
+            if (live > 0) append("   ●  $live ao vivo agora")
+        }
+        updated.visibility = View.VISIBLE
     }
 
     private fun buildChips() {
@@ -195,7 +232,11 @@ class GamesPage(act: MainActivity, id: String) : Page(act, id) {
         }
         adapter.submit(list)
         empty.visibility = if (list.isEmpty()) View.VISIBLE else View.GONE
-        empty.text = if (all.isEmpty()) "Nenhum jogo informado para hoje.\nVeja os canais esportivos ao vivo." else "Nenhum jogo neste filtro."
+        empty.text = when {
+            all.isEmpty() && failed -> "Não foi possível buscar os jogos agora.\nTentaremos de novo automaticamente."
+            all.isEmpty() -> "Nenhum jogo informado para hoje.\nVeja os canais esportivos ao vivo."
+            else -> "Nenhum jogo neste filtro."
+        }
         if (all.isEmpty() && loaded && !showingChannels && sportsPage == null) select("channels")
     }
 
@@ -284,7 +325,7 @@ class GamesPage(act: MainActivity, id: String) : Page(act, id) {
             h.channels.text = if (g.channels.isEmpty()) "Canal não informado" else "📺  " + g.channels.joinToString("  •  ")
             val now = System.currentTimeMillis() / 1000
             when (g.liveStatus(now)) {
-                "live" -> badge(h.status, "AO VIVO", Color.parseColor("#FF3B30"))
+                "live" -> badge(h.status, if (g.minute.isNotBlank()) "AO VIVO  ${g.minute}" else "AO VIVO", Color.parseColor("#FF3B30"))
                 "ended" -> badge(h.status, "ENCERRADO", Color.parseColor("#55000000"))
                 "soon" -> {
                     val mins = ((g.ts - now) / 60).toInt()

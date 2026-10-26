@@ -1,0 +1,26 @@
+name: Diagnóstico ESPN
+
+on:
+  push:
+    branches: ["claude/**"]
+    paths: [".github/workflows/diag-espn.yml"]
+  workflow_dispatch:
+
+jobs:
+  espn:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: API de jogos do painel (formato bruto)
+        run: |
+          set +e
+          curl -sS -m 25 "https://xsender.painelmaster.lol/retornojogosmx.json" -o g.json -w "HTTP %{http_code} %{size_download} bytes\n"
+          head -c 1500 g.json; echo
+          echo "== estrutura"
+          jq -c 'if type=="array" then {tipo:"array", n:length, chaves:(.[0]|keys)} else {tipo:"obj", chaves:keys} end' g.json
+          echo "== 3 primeiros itens"
+          jq -c 'if type=="array" then .[0:3] else (to_entries|.[0:2]) end' g.json | head -c 4000; echo
+          echo "== painel api/games.php"
+          curl -sS -m 25 "https://p2pwmax.dexdown.shop/api/games.php" | jq -c '{ok, n: (.games|length), g: .games[0:3]}' | head -c 2500; echo
+          echo "== ESPN broadcasts (BR)"
+          curl -sS -m 20 "https://site.api.espn.com/apis/site/v2/sports/soccer/bra.1/scoreboard?lang=pt&region=br" | jq -c '[.events[0:3][] | {n: .shortName, b: .competitions[0].broadcasts, geo: .competitions[0].geoBroadcasts}]' | head -c 2000; echo

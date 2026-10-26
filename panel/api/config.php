@@ -116,6 +116,14 @@ try {
             'action' => $b['action_type'], 'value' => $b['action_value']];
     }
 
+    $streamings = [];
+    if (($s['streamings_enabled'] ?? '1') === '1') {
+        foreach ($pdo->query('SELECT * FROM streamings WHERE active=1 ORDER BY position ASC, id ASC LIMIT 30') as $r) {
+            $streamings[] = ['name' => $r['name'], 'logo' => asset_url($r['logo']), 'keywords' => keywords($r['keywords']),
+                'color' => $r['color'], 'text_color' => $r['text_color']];
+        }
+    }
+
     $messages = [];
     foreach ($pdo->query('SELECT id, title, body, popup, created_at FROM messages WHERE active=1 ORDER BY id DESC LIMIT 20') as $m) {
         $messages[] = ['id' => (int)$m['id'], 'title' => $m['title'], 'body' => $m['body'], 'popup' => (bool)$m['popup'], 'date' => $m['created_at']];
@@ -134,7 +142,7 @@ try {
             'reseller' => $reseller ? $reseller['name'] : '',
             'ask_reseller_code' => $s['ask_reseller_code'] === '1' || $s['require_reseller_code'] === '1',
             'start_tab' => $s['start_tab'],
-            'allow_server_select' => $s['allow_server_select'] === '1',
+            'allow_server_select' => false,
             'home_mosaic' => ($s['home_mosaic'] ?? '1') === '1',
         ],
         'theme' => [
@@ -177,6 +185,7 @@ try {
             'epg' => $s['epg_enabled'] === '1',
         ],
         'banners' => $banners,
+        'streamings' => ['enabled' => ($s['streamings_enabled'] ?? '1') === '1', 'title' => $s['streamings_title'] ?? 'Streamings', 'items' => $streamings],
         'messages' => $messages,
         'maintenance' => ['on' => $s['maintenance'] === '1', 'message' => $s['maintenance_message']],
         'update' => ['version_code' => (int)$s['latest_version_code'], 'url' => $s['update_url'], 'force' => $s['force_update'] === '1'],
@@ -188,6 +197,30 @@ try {
                 : ($blocked ? 'Este aparelho foi bloqueado.' : ''),
         ],
     ];
+
+    // ---- app de esportes (NovaSports): marca, cores, ligas e atualização próprias
+    if (req('app', 10) === 'sports') {
+        $payload['app']['name'] = $s['sports_app_name'] ?: 'NovaSports';
+        $payload['app']['logo'] = asset_url($s['sports_logo'] ?? '');
+        $payload['app']['welcome'] = $s['sports_welcome'] ?? '';
+        // fundo próprio do app de esportes (tema de gramado), sem a imagem do NovaTV
+        $payload['app']['background'] = asset_url($s['sports_background'] ?? '');
+        $payload['app']['background_mode'] = ($s['sports_background'] ?? '') !== '' ? 'image' : 'gradient';
+        foreach (['primary', 'accent', 'bg1', 'bg2', 'text2'] as $c) {
+            $v = $s['sports_color_' . $c] ?? '';
+            if (preg_match('/^#[0-9a-fA-F]{6}$/', $v)) $payload['theme'][$c] = $v;
+        }
+        $payload['update'] = [
+            'version_code' => (int)($s['sports_latest_version_code'] ?? 0),
+            'url' => $s['sports_update_url'] ?? '',
+            'force' => ($s['sports_force_update'] ?? '0') === '1',
+        ];
+        $payload['sports'] = [
+            'leagues' => sports_leagues(),
+            'keywords' => keywords($s['sports_keywords'] ?? ''),
+            'espn_proxy' => base_url() . '/api/espn.php',
+        ];
+    }
 
     $etag = '"' . substr(sha1(json_encode($payload)), 0, 20) . '"';
     header('ETag: ' . $etag);

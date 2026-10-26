@@ -1,0 +1,53 @@
+name: Diagnóstico P2P
+
+# Testa os servidores do painel como o app faz. Para testar com um usuário real,
+# crie os secrets P2P_TEST_USER e P2P_TEST_PASS (Settings > Secrets > Actions).
+on:
+  push:
+    branches: ["claude/**"]
+    paths: [".github/workflows/diag-p2p.yml"]
+  workflow_dispatch:
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PANEL: https://p2pwmax.dexdown.shop
+      U: ${{ secrets.P2P_TEST_USER || 'teste000' }}
+      P: ${{ secrets.P2P_TEST_PASS || 'teste000' }}
+    steps:
+      - name: Testar servidores do painel
+        run: |
+          set +e
+          UA="Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36 NovaTV"
+          curl -sS -m 25 "$PANEL/api/config.php" -o cfg.json -w "config.php HTTP %{http_code}\n"
+          jq -c '.servers[] | {id,name,type,urls,user_suffix,stream_base,stream_template,output,user_agent}' cfg.json || head -c 500 cfg.json
+          jq -c '.servers[]' cfg.json | while read -r s; do
+            name=$(echo "$s" | jq -r .name); type=$(echo "$s" | jq -r .type)
+            suf=$(echo "$s" | jq -r .user_suffix); sua=$(echo "$s" | jq -r '.user_agent // empty')
+            echo "================ $name ($type)"
+            for base in $(echo "$s" | jq -r '.urls[]'); do
+              host=$(echo "$base" | sed -E 's#^[a-z]+://##; s#[:/].*##')
+              echo "--- $base  (DNS: $(getent hosts "$host" | awk '{print $1}' | head -3 | tr '\n' ' '))"
+              for user in "$U$suf" "$U"; do
+                for mode in GET POST; do
+                  if [ "$mode" = GET ]; then
+                    out=$(curl -sS -m 20 -A "${sua:-$UA}" -L "$base/player_api.php?username=$user&password=$P" -w "\n%{http_code}" 2>&1)
+                  else
+                    out=$(curl -sS -m 20 -A "${sua:-$UA}" -L -d "username=$user&password=$P" "$base/player_api.php" -w "\n%{http_code}" 2>&1)
+                  fi
+                  echo "[$mode sufixo=$([ "$user" = "$U" ] && echo nao || echo sim)] HTTP $(echo "$out" | tail -1)"
+                  echo "$out" | head -c 700 | sed "s/$U/USER/g; s/$P/PASS/g"; echo
+                done
+              done
+              echo "[raiz /] HTTP $(curl -sS -m 15 -A "$UA" -o /dev/null -w '%{http_code}' "$base/" 2>&1)"
+              # mesmo domínio por HTTPS e caminhos de login comuns
+              hb="https://$host"
+              for path in "/" "/player_api.php?username=$U$suf&password=$P" "/api/auth" "/api/login" "/auth" "/login"; do
+                r=$(curl -sS -m 15 -A "$UA" -o body.txt -w '%{http_code} %{content_type}' "$hb$path" 2>&1)
+                echo "[https ${path%%\?*}] $r | $(head -c 250 body.txt | tr '\n' ' ' | sed "s/$U/USER/g; s/$P/PASS/g")"
+              done
+              echo "[DNS CNAME] $(dig +short "$host" CNAME) [A] $(dig +short "$host" A | tr '\n' ' ')"
+            done
+          done

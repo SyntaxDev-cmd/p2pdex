@@ -11,12 +11,12 @@ val hasKeystore = keystorePath.isNotEmpty() && rootProject.file(keystorePath).ex
 
 android {
     namespace = "com.novatv.app"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = prop("APP_ID", "com.novatv.app")
         minSdk = 21
-        targetSdk = 34
+        targetSdk = 36
         versionCode = prop("VERSION_CODE", "1").toInt()
         versionName = prop("VERSION_NAME", "1.0.0")
 
@@ -39,13 +39,30 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = true
-            isShrinkResources = true
+            // sem encolher/renomear recursos: as imagens ficam com o nome original
+            // (res/drawable-nodpi/app_logo.png...) e aparecem no APK Editor para troca
+            isShrinkResources = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             // sem keystore própria assina com a chave de debug (instala, mas troque por uma fixa antes de distribuir)
             signingConfig = signingConfigs.getByName(if (hasKeystore) "release" else "debug")
         }
         debug {
             applicationIdSuffix = ".debug"
+        }
+    }
+
+    // full: APK para instalar direto (TV Box, celular), com atualização automática pelo painel
+    // play: versão para a Google Play (sem instalador próprio; atualiza pela loja). Gere com bundlePlayRelease
+    flavorDimensions += "store"
+    productFlavors {
+        create("full") {
+            dimension = "store"
+            isDefault = true
+            buildConfigField("boolean", "PLAY_STORE", "false")
+        }
+        create("play") {
+            dimension = "store"
+            buildConfigField("boolean", "PLAY_STORE", "true")
         }
     }
 
@@ -69,6 +86,10 @@ android {
     packaging {
         resources.excludes += setOf("META-INF/*.kotlin_module", "META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*")
     }
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+        unitTests.isReturnDefaultValues = true
+    }
     lint {
         abortOnError = false
         checkReleaseBuilds = false
@@ -84,6 +105,12 @@ dependencies {
     implementation("androidx.media3:media3-ui:$media3")
     implementation("androidx.media3:media3-datasource-okhttp:$media3")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp-dnsoverhttps:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("io.coil-kt:coil:2.7.0")
+
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.14.1")
+    testImplementation("androidx.test:core:1.6.1")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
 }

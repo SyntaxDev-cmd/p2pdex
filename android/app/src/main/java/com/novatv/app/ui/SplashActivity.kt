@@ -103,7 +103,14 @@ class SplashActivity : BaseActivity() {
             if (cfg.updateVersion > BuildConfig.VERSION_CODE && cfg.updateUrl.isNotBlank()) {
                 val buttons = mutableListOf<Dialogs.Btn>()
                 if (!cfg.forceUpdate) buttons.add(Dialogs.Btn("Depois") { proceed() })
-                buttons.add(Dialogs.Btn("Atualizar", true) { Updater.run(this@SplashActivity, cfg.updateUrl) { if (!cfg.forceUpdate) proceed() } })
+                buttons.add(Dialogs.Btn("Atualizar", true) {
+                    if (BuildConfig.PLAY_STORE) {
+                        // versão da loja: atualiza pela Google Play
+                        runCatching { startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("market://details?id=$packageName"))) }
+                            .onFailure { runCatching { startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://play.google.com/store/apps/details?id=$packageName"))) } }
+                        if (!cfg.forceUpdate) proceed()
+                    } else Updater.run(this@SplashActivity, cfg.updateUrl) { if (!cfg.forceUpdate) proceed() }
+                })
                 Dialogs.show(this@SplashActivity, "Nova versão disponível", "Atualize para ter as últimas melhorias e correções.", buttons, cancelable = false)
                 return@launch
             }

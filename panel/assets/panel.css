@@ -187,3 +187,31 @@ tr.muted td{opacity:.55}
 }
 .errrow{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-top:10px;background:#0f131b}
 .errrow summary{cursor:pointer;font-size:14px;line-height:1.6}
+
+/* ===================== estilo 2.0 ===================== */
+body{background:radial-gradient(1200px 600px at 10% -10%,color-mix(in srgb,var(--brand) 18%,transparent),transparent 60%),
+  radial-gradient(900px 500px at 110% 10%,#3b82f61a,transparent 60%),var(--bg);background-attachment:fixed}
+.side{background:linear-gradient(180deg,#151a24,#0f131b);box-shadow:4px 0 24px #0005}
+.brand .dot,.brand img{box-shadow:0 6px 18px color-mix(in srgb,var(--brand) 40%,transparent)}
+.side nav a{transition:background .15s,color .15s,transform .15s}
+.side nav a:hover{transform:translateX(2px)}
+.side nav a.on{background:linear-gradient(90deg,color-mix(in srgb,var(--brand) 32%,transparent),transparent);box-shadow:inset 3px 0 0 var(--brand)}
+.top{background:color-mix(in srgb,var(--bg) 80%,transparent);backdrop-filter:blur(10px);position:sticky;top:0;z-index:5}
+.top h1{letter-spacing:-.01em}
+.card,.stat{background:linear-gradient(180deg,#1c2230,#171c27);box-shadow:0 10px 30px #0004;transition:border-color .2s,transform .2s}
+.card:hover{border-color:#36405a}
+.stat:hover{transform:translateY(-2px);border-color:color-mix(in srgb,var(--brand) 40%,var(--line))}
+.stat b{background:linear-gradient(90deg,#fff,#c7d2fe);-webkit-background-clip:text;background-clip:text;color:transparent}
+.card h2{display:flex;align-items:center;gap:8px}
+.card h2::before{content:"";width:4px;height:16px;border-radius:4px;background:var(--brand)}
+.btn{background:linear-gradient(180deg,color-mix(in srgb,var(--brand) 92%,#fff),var(--brand));box-shadow:0 6px 16px color-mix(in srgb,var(--brand) 30%,transparent);transition:transform .12s,filter .12s}
+.btn:hover{transform:translateY(-1px)}
+.btn:active{transform:translateY(0)}
+.btn.ghost{box-shadow:none;background:#ffffff08}
+.btn.danger{background:linear-gradient(180deg,#f87171,#dc2626);box-shadow:0 6px 16px #dc262633}
+input[type=text],input[type=password],input[type=number],input[type=url],select,textarea{transition:border-color .15s,background .15s}
+input[type=text]:hover,input[type=password]:hover,input[type=number]:hover,select:hover,textarea:hover{border-color:#3a4560}
+input[type=color]{width:100%;height:42px;border:1px solid var(--line);border-radius:10px;background:#0f131b;padding:4px;cursor:pointer}
+table tr:hover td{background:#ffffff05}
+.badge{font-weight:600}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}

@@ -21,7 +21,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         save_settings([
             'games_enabled' => !empty($_POST['games_enabled']) ? '1' : '0',
             'games_api_url' => $url,
-            'games_cache_minutes' => (string)max(1, min(120, (int)($_POST['games_cache_minutes'] ?? 10))),
+            'games_cache_minutes' => (string)max(1, min(5, (int)($_POST['games_cache_minutes'] ?? 3))),
             'games_map' => $map,
         ]);
         @unlink(games_cache_file());
@@ -76,7 +76,7 @@ require __DIR__ . '/inc/header.php';
   <label class="switch" style="margin-bottom:14px"><input type="checkbox" name="games_enabled" value="1" <?= $s['games_enabled'] === '1' ? 'checked' : '' ?>> Mostrar jogos do dia no app</label>
   <div class="grid g3">
     <div class="field" style="grid-column:span 2"><label>URL da API de jogos (JSON)</label><input type="url" name="games_api_url" value="<?= e($s['games_api_url']) ?>" placeholder="https://.../jogos.json"></div>
-    <div class="field"><label>Atualizar a cada (minutos)</label><input type="number" name="games_cache_minutes" min="1" max="120" value="<?= e($s['games_cache_minutes']) ?>"></div>
+    <div class="field"><label>Atualizar a cada (minutos)</label><input type="number" name="games_cache_minutes" min="1" max="5" value="<?= e($s['games_cache_minutes']) ?>"></div>
   </div>
   <details class="field">
     <summary style="cursor:pointer;color:var(--muted)">Avançado: mapear campos manualmente</summary>

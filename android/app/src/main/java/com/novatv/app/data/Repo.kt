@@ -1,6 +1,13 @@
 package com.novatv.app.data
 
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
@@ -32,21 +39,77 @@ object Repo {
     suspend fun login(server: ServerDef, user: String, pass: String): Account {
         val p = create(server, user, pass)
         val acc = p.login()
+        adopt(server, p, acc, user, pass)
+        return acc
+    }
+
+    private fun adopt(server: ServerDef, p: Provider, acc: Account, user: String, pass: String) {
         provider = p
         account = acc
         clear()
         Prefs.serverId = server.id
+        Prefs.activeBase = p.activeBase
         Prefs.username = user
         Prefs.password = pass
-        return acc
     }
 
-    /** Login automático com os dados salvos. */
+    /**
+     * Seleção automática de servidor: testa todos os servidores ativos do painel ao mesmo
+     * tempo (DNS, P2P e M3U) e entra no primeiro que aceitar o usuário e a senha.
+     * O servidor usado da última vez é testado junto, então quem já entrou volta rápido.
+     */
+    suspend fun loginAuto(user: String, pass: String): Account = withContext(Dispatchers.IO) {
+        val list = servers().sortedByDescending { it.id == Prefs.serverId }
+        if (list.isEmpty()) throw NoServerException()
+        val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+        val winner = CompletableDeferred<Triple<ServerDef, Provider, Account>>()
+        val errors = mutableListOf<Pair<ServerDef, Exception>>()
+        val jobs = list.map { s ->
+            scope.launch {
+                try {
+                    val p = create(s, user, pass)
+                    val acc = kotlinx.coroutines.withTimeout(35_000) { p.login() }
+                    winner.complete(Triple(s, p, acc))
+                } catch (e: Exception) {
+                    synchronized(errors) {
+                        errors.add(s to e)
+                        if (errors.size == list.size) winner.completeExceptionally(loginError(errors))
+                    }
+                }
+            }
+        }
+        try {
+            val (s, p, acc) = winner.await()
+            adopt(s, p, acc, user, pass)
+            acc
+        } finally {
+            jobs.forEach { it.cancel() }
+            scope.cancel()
+        }
+    }
+
+    /**
+     * Junta os erros de todos os servidores: senha errada/vencida tem prioridade;
+     * senão, explica o que aconteceu em cada servidor (ajuda o suporte).
+     */
+    private fun loginError(errors: List<Pair<ServerDef, Exception>>): Exception {
+        val auth = errors.map { it.second }.filterIsInstance<AuthException>()
+        if (auth.isNotEmpty()) return XtreamProvider.bestError(auth)
+        val detail = errors.joinToString("\n") { (s, e) -> "• ${s.name}: ${Net.describe(e)}" }
+        return LoginNetworkException(detail)
+    }
+
+    /** Login automático com os dados salvos (em qualquer servidor ativo do painel). */
     suspend fun restore(): Account? {
         if (!Prefs.loggedIn) return null
-        val servers = servers()
-        val server = servers.firstOrNull { it.id == Prefs.serverId } ?: servers.firstOrNull() ?: return null
-        return login(server, Prefs.username, Prefs.password)
+        if (servers().isEmpty()) return null
+        return loginAuto(Prefs.username, Prefs.password)
+    }
+
+    /** Só para testes automáticos: usa um provedor falso, sem rede. */
+    fun setProviderForTest(p: Provider?) {
+        provider = p
+        clear()
     }
 
     fun logout() {
@@ -119,7 +182,7 @@ object Repo {
         val kids = p?.kids == true
         return rawCategories(kind).mapNotNull { c ->
             when {
-                kids && (isAdultName(c) || !matches(c.name, config.kidsKeywords)) -> null
+                kids && (isAdultName(c) || !matches(c.name, config.kidsKeywords) || isSportsName(c.name)) -> null
                 isAdult(c) || (p != null && c.key in p.locked) -> c.copy(locked = true)
                 else -> c
             }
@@ -147,6 +210,8 @@ object Repo {
             sp == "fav" -> Prefs.favorites(c.kind)
             sp == "recent" -> Prefs.recents()
             // categorias virtuais usadas pelos atalhos da tela inicial
+            // streaming sem categoria própria: o que está no serviço (TMDB) e existe na lista do cliente
+            sp != null && sp.startsWith("stream:") -> cached("items:${c.kind}:$sp") { Tmdb.providerInCatalog(sp.removePrefix("stream:"), c.kind == Kind.SERIES) }
             sp == "new" -> searchIndex(c.kind).map { it.second }.sortedByDescending { it.added }.take(200)
             sp != null && sp.startsWith("year:") -> {
                 val y = sp.removePrefix("year:")
@@ -185,12 +250,19 @@ object Repo {
 
     /** Categorias de um tipo que batem com palavras-chave (kids, anime, esportes). */
     suspend fun filtered(kind: Kind, keywords: List<String>): List<Category> =
-        categories(kind).filter { !it.locked && matches(it.name, keywords) }
+        categories(kind).filter { !it.locked && (matches(it.name, keywords) || (keywords === config.sportsKeywords && isSportsName(it.name))) }
 
     /** Categorias para a aba KIDS: canais + filmes + séries, em paralelo. */
-    suspend fun kidsCategories(): List<Category> = mixed(config.kidsKeywords, listOf(Kind.LIVE, Kind.MOVIE, Kind.SERIES))
+    suspend fun kidsCategories(): List<Category> =
+        mixed(config.kidsKeywords, listOf(Kind.LIVE, Kind.MOVIE, Kind.SERIES)).filter { !isSportsName(it.name) && !isAdultName(it) }
 
-    suspend fun animeCategories(): List<Category> = mixed(config.animeKeywords, listOf(Kind.SERIES, Kind.MOVIE))
+    suspend fun animeCategories(): List<Category> =
+        mixed(config.animeKeywords, listOf(Kind.SERIES, Kind.MOVIE)).filter { !isSportsName(it.name) && !isAdultName(it) }
+
+    private val sportsEmoji = listOf("⚽", "🏀", "🏈", "⚾", "🎾", "🏐", "🏉", "🥊", "🏆", "🏎", "🏟", "🥅", "🏒", "⛳")
+
+    /** Categoria de esporte (palavras-chave do painel ou emoji de esporte no nome, ex.: "⚽ DISNEY+ • MAX"). */
+    fun isSportsName(name: String): Boolean = sportsEmoji.any { name.contains(it) } || matches(name, config.sportsKeywords)
 
     private suspend fun mixed(keywords: List<String>, kinds: List<Kind>): List<Category> = coroutineScope {
         val jobs: List<Deferred<List<Category>>> = kinds.map { k ->

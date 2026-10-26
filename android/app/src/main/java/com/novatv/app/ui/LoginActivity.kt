@@ -52,7 +52,6 @@ class LoginActivity : BaseActivity() {
     private lateinit var loading: ProgressBar
     private lateinit var passToggle: ImageView
     private var servers: List<ServerDef> = emptyList()
-    private var selected = 0
     private var busy = false
     private var passVisible = false
 
@@ -96,8 +95,8 @@ class LoginActivity : BaseActivity() {
         intent.getStringExtra("error")?.let { showError(it) }
 
         (if (user.text.isEmpty()) user else pass).requestFocus()
-        // sem lista de servidores (painel não respondeu na abertura): tenta de novo em segundo plano
-        if (servers.isEmpty()) launch { reloadServers() }
+        // sempre confere no painel os servidores conectados (novos, removidos ou desativados)
+        launch { if (!busy) reloadServers() }
         animateIn()
     }
 
@@ -263,25 +262,13 @@ class LoginActivity : BaseActivity() {
 
     // ------------------------------------------------------------------ servidores
 
-    private fun setupServers(cfg: PanelConfig) {
+    /**
+     * O servidor é escolhido sozinho: o app recebe do painel os servidores ativos
+     * (DNS, P2P, M3U) e testa todos no login. O cliente nunca escolhe nem digita DNS.
+     */
+    private fun setupServers(@Suppress("UNUSED_PARAMETER") cfg: PanelConfig) {
         servers = Repo.servers()
-        selected = servers.indexOfFirst { it.id == Prefs.serverId }.coerceAtLeast(0)
-        // as DNS vêm somente do painel; o cliente nunca digita endereço de servidor
-        when {
-            servers.isEmpty() -> serverView.visibility = View.GONE
-            servers.size == 1 || !cfg.allowServerSelect -> serverView.visibility = View.GONE
-            else -> {
-                serverView.visibility = View.VISIBLE
-                updateServerLabel()
-                serverView.setOnClickListener {
-                    Dialogs.choose(this, "Escolha o servidor", servers.map { it.name }, selected) {
-                        selected = it
-                        updateServerLabel()
-                        user.requestFocus()
-                    }
-                }
-            }
-        }
+        serverView.visibility = View.GONE
     }
 
     /** Busca a configuração do painel de novo. Retorna true se há servidores para entrar. */
@@ -290,10 +277,6 @@ class LoginActivity : BaseActivity() {
         Ui.apply(PanelConfig.current)
         setupServers(PanelConfig.current)
         return servers.isNotEmpty()
-    }
-
-    private fun updateServerLabel() {
-        serverView.text = servers.getOrNull(selected)?.name.orEmpty()
     }
 
     private fun togglePassword() {
@@ -374,34 +357,27 @@ class LoginActivity : BaseActivity() {
             }
             return
         }
-        val list = servers
-        // se o cliente não escolhe o servidor, tenta um por um (ordem de prioridade do painel)
-        val candidates = if (serverView.visibility == View.VISIBLE || list.size == 1) listOfNotNull(list.getOrNull(selected)) else list
         setBusy(true)
         clearError()
         (getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager)?.hideSoftInputFromWindow(pass.windowToken, 0)
         launch {
-            var lastError: Exception? = null
-            for (s in candidates) {
-                try {
-                    val acc = Repo.login(s, u, p)
-                    acc.expiresAt?.let {
-                        Dialogs.toast(this@LoginActivity, "Bem-vindo! Assinatura válida até " + SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(it)))
-                    }
-                    ProfilesActivity.route(this@LoginActivity)
-                    return@launch
-                } catch (e: kotlinx.coroutines.CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    lastError = e
+            val result = runCatching { Repo.loginAuto(u, p) }
+            val e = result.exceptionOrNull()
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            if (e == null) {
+                result.getOrNull()?.expiresAt?.let {
+                    Dialogs.toast(this@LoginActivity, "Bem-vindo! Assinatura válida até " + SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(it)))
                 }
+                ProfilesActivity.route(this@LoginActivity)
+                return@launch
             }
             setBusy(false)
-            val e = lastError
             showError(
                 when (e) {
                     is AuthException -> e.message ?: "Usuário ou senha inválidos."
-                    null -> "Falha ao entrar."
+                    is com.novatv.app.data.NoServerException -> e.message.orEmpty()
+                    is com.novatv.app.data.LoginNetworkException ->
+                        "Não foi possível conectar ao servidor. Verifique sua internet e tente novamente.\n" + e.detail
                     else -> "Não foi possível conectar ao servidor. Verifique sua internet e tente novamente."
                 }
             )
@@ -409,8 +385,15 @@ class LoginActivity : BaseActivity() {
         }
     }
 
+    private var subtitleText: CharSequence? = null
+
     private fun setBusy(on: Boolean) {
         busy = on
+        val sub = findViewById<TextView>(R.id.subtitle)
+        if (on) {
+            if (subtitleText == null) subtitleText = sub.text
+            sub.text = "Conectando ao melhor servidor..."
+        } else subtitleText?.let { sub.text = it; subtitleText = null }
         loading.visibility = if (on) View.VISIBLE else View.GONE
         loginBtn.text = if (on) "" else "ENTRAR"
         listOf(user, pass, serverView, codeField).forEach { it.isEnabled = !on }

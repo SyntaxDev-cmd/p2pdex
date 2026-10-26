@@ -8,11 +8,14 @@
 const GAME_FIELDS = [
     'home' => ['time1', 'time_1', 'mandante', 'home', 'casa', 'team1', 'team_1', 'time_casa', 'home_team', 'hometeam', 'timea', 'equipe1', 'clube1', 'nome_time1', 'time_mandante', 'teamhome'],
     'away' => ['time2', 'time_2', 'visitante', 'away', 'fora', 'team2', 'team_2', 'time_fora', 'away_team', 'awayteam', 'timeb', 'equipe2', 'clube2', 'nome_time2', 'time_visitante', 'teamaway'],
-    'home_logo' => ['escudo1', 'escudo_1', 'logo1', 'logo_1', 'home_logo', 'img1', 'imagem1', 'brasao1', 'escudo_mandante', 'logo_mandante', 'icon1', 'logo_time1', 'escudo_time1'],
-    'away_logo' => ['escudo2', 'escudo_2', 'logo2', 'logo_2', 'away_logo', 'img2', 'imagem2', 'brasao2', 'escudo_visitante', 'logo_visitante', 'icon2', 'logo_time2', 'escudo_time2'],
+    'home_logo' => ['escudo1', 'escudo_1', 'logo1', 'logo_1', 'home_logo', 'img1', 'imagem1', 'brasao1', 'escudo_mandante', 'logo_mandante', 'icon1', 'logo_time1', 'escudo_time1', 'img_time1_url', 'img_time1', 'escudo_time1_url', 'logo_time1_url', 'time1_img'],
+    'away_logo' => ['escudo2', 'escudo_2', 'logo2', 'logo_2', 'away_logo', 'img2', 'imagem2', 'brasao2', 'escudo_visitante', 'logo_visitante', 'icon2', 'logo_time2', 'escudo_time2', 'img_time2_url', 'img_time2', 'escudo_time2_url', 'logo_time2_url', 'time2_img'],
+    'home_score' => ['placar_time1', 'placar1', 'gols_time1', 'gols1', 'home_score', 'score1', 'placar_mandante'],
+    'away_score' => ['placar_time2', 'placar2', 'gols_time2', 'gols2', 'away_score', 'score2', 'placar_visitante'],
+    'day' => ['data_jogo', 'dia', 'day'],
     'time' => ['hora', 'horario', 'horário', 'time', 'hour', 'inicio', 'início', 'start', 'data_hora', 'datahora', 'datetime', 'date_time', 'kickoff', 'hora_jogo', 'horario_jogo', 'date', 'data'],
     'league' => ['campeonato', 'liga', 'league', 'competicao', 'competição', 'torneio', 'championship', 'categoria', 'competition', 'tournament', 'camp'],
-    'league_logo' => ['logo_campeonato', 'campeonato_logo', 'league_logo', 'logo_liga', 'escudo_campeonato', 'icone_campeonato'],
+    'league_logo' => ['logo_campeonato', 'campeonato_logo', 'league_logo', 'logo_liga', 'escudo_campeonato', 'icone_campeonato', 'img_competicao_url', 'img_campeonato_url', 'logo_competicao'],
     'channels' => ['canais', 'canal', 'channels', 'channel', 'transmissao', 'transmissão', 'onde_assistir', 'emissoras', 'emissora', 'tv', 'broadcast', 'transmissoes'],
     'title' => ['jogo', 'partida', 'titulo', 'título', 'title', 'nome', 'name', 'evento', 'event', 'confronto', 'match'],
     'score' => ['placar', 'score', 'resultado'],
@@ -31,7 +34,8 @@ function games_get(bool $force = false): array
     if (setting('games_enabled') !== '1' || $url === '') {
         return ['ok' => false, 'games' => [], 'updated' => 0, 'error' => 'disabled', 'source' => ''];
     }
-    $ttl = max(1, (int)setting('games_cache_minutes', '10')) * 60;
+    // jogos mudam ao longo do dia (placar, ao vivo): no máximo 5 minutos de cache
+    $ttl = min(5, max(1, (int)setting('games_cache_minutes', '3'))) * 60;
     $file = games_cache_file();
     $cached = is_file($file) ? json_decode((string)file_get_contents($file), true) : null;
     if (!$force && is_array($cached) && ($cached['url'] ?? '') === $url && time() - (int)($cached['updated'] ?? 0) < $ttl) {
@@ -74,18 +78,22 @@ function is_list_of_objects($v): bool
 function game_score(array $list): int
 {
     $found = [];
+    $direct = [];
     foreach (array_slice(array_values($list), 0, 5) as $item) {
         if (!is_array($item)) continue;
         $keys = array_keys(flat_item($item));
         foreach (['home', 'away', 'title', 'time', 'channels', 'league'] as $f) {
             foreach (GAME_FIELDS[$f] as $cand) {
-                if (in_array($cand, $keys, true) || in_array('__grupo.' . $cand, $keys, true)) { $found[$f] = true; break; }
+                if (in_array($cand, $keys, true)) { $found[$f] = true; $direct[$f] = true; break; }
+                if (in_array('__grupo.' . $cand, $keys, true)) { $found[$f] = true; break; }
             }
         }
     }
     // precisa parecer jogo: dois times, ou título + horário/canal
     $looks = (isset($found['home']) && isset($found['away'])) || (isset($found['title']) && (isset($found['time']) || isset($found['channels'])));
-    return $looks ? count($found) : 0;
+    if (!$looks) return 0;
+    // times no próprio item (e não herdados do nível de cima) = é a lista de jogos de verdade
+    return count($found) + (isset($direct['home']) && isset($direct['away']) ? 10 : 0);
 }
 
 /** Junta as listas candidatas (inclusive jogos agrupados por campeonato). */
@@ -221,11 +229,26 @@ function games_normalize($data, array $map): array
         }
         if ($home === '' && $title === '') continue;
         [$hm, $ts] = parse_game_time(pick($flat, 'time', $map) ?? '');
+        // "data_jogo": "hoje" / "amanha" / "ontem"
+        $day = mb_strtolower(scalar_name(pick($flat, 'day', $map)));
+        if ($ts > 0 && $day !== '') {
+            if (str_starts_with($day, 'amanh')) $ts += 86400;
+            elseif (str_starts_with($day, 'ontem')) $ts -= 86400;
+        }
         $status = '';
+        $minute = '';
         $rawStatus = mb_strtolower(scalar_name(pick($flat, 'status', $map)));
-        if ($rawStatus !== '' && preg_match('/vivo|live|andamento|1º|2º|interv/u', $rawStatus)) $status = 'live';
+        if (preg_match("/^\\s*(\\d{1,3}(?:\\+\\d{1,2})?)\\s*['’]?\\s*$/u", $rawStatus, $mm)) {
+            // status com o minuto do jogo ("40'") = ao vivo
+            $status = 'live';
+            $minute = $mm[1] . "'";
+        } elseif ($rawStatus !== '' && preg_match('/vivo|live|andamento|1º|2º|interv/u', $rawStatus)) $status = 'live';
         elseif ($rawStatus !== '' && preg_match('/encerr|fim|final|ended|termin/u', $rawStatus)) $status = 'ended';
         elseif ($ts > 0) $status = $now >= $ts && $now < $ts + 2 * 3600 ? 'live' : ($now >= $ts + 2 * 3600 ? 'ended' : 'soon');
+        $score = scalar_name(pick($flat, 'score', $map));
+        $hs = scalar_name(pick($flat, 'home_score', $map));
+        $as = scalar_name(pick($flat, 'away_score', $map));
+        if ($score === '' && $hs !== '' && $as !== '') $score = "$hs - $as";
         $games[] = [
             'id' => substr(md5($home . $away . $hm . $title), 0, 12),
             'time' => $hm,
@@ -238,8 +261,9 @@ function games_normalize($data, array $map): array
             'league' => scalar_name(pick($flat, 'league', $map)),
             'league_logo' => scalar_name(pick($flat, 'league_logo', $map)),
             'channels' => to_channels(pick($flat, 'channels', $map)),
-            'score' => scalar_name(pick($flat, 'score', $map)),
+            'score' => $score,
             'status' => $status,
+            'minute' => $minute ?: (str_contains($rawStatus, 'interv') ? 'Intervalo' : ''),
         ];
     }
     usort($games, function ($a, $b) {

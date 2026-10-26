@@ -107,6 +107,24 @@ Secrets opcionais em *Settings → Secrets and variables → Actions*:
 
 O número da versão (`versionCode`) é o número do build. Para avisar os clientes, coloque esse número e o link do APK em **Painel → Sistema e app**.
 
+## Publicar na Google Play
+
+O projeto gera duas versões:
+
+| Versão | Para quê | Como gerar |
+|---|---|---|
+| **full** (padrão) | APK para instalar direto em TV Box e celular, com atualização automática pelo painel | `./gradlew assembleFullRelease` (é o `NovaTV.apk` das Releases) |
+| **play** | Google Play: sem instalador próprio (a loja não permite), atualiza pela loja | `./gradlew bundlePlayRelease` → arquivo `.aab` |
+
+A cada build o GitHub Actions também guarda o `.aab` da versão play em *Artifacts* (`NovaTV-playstore-aab-N`).
+
+Já está pronto para a loja: `targetSdk`/`compileSdk` 36 (Android 16), `minSdk` 21 (Android 5.0), tela de borda a borda com entalhe tratado, botão voltar compatível com o Android 16, banner para Android TV e sem exigir tela de toque. Para publicar, use uma **keystore própria** (secrets `KEYSTORE_*`) e troque o `APP_ID` em `gradle.properties` por um ID seu (ex.: `com.suamarca.tv`).
+
+## APK de teste
+
+Cada alteração enviada nas branches `claude/**` publica um APK de teste no link fixo
+https://github.com/SyntaxDev-cmd/p2pdex/releases/download/teste/NovaTV.apk (a Release `latest` continua vindo só da `main`).
+
 ## Controle remoto
 
 | Tecla | Ação |

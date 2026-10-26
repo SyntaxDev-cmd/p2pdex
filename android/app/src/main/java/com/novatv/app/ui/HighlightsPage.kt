@@ -31,6 +31,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import com.novatv.app.data.AuthException
 import java.util.Calendar
 
 /** Aba DESTAQUES: a tela inicial com mosaico, atalhos e fileiras de filmes, séries e canais. */
@@ -122,89 +123,351 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
         hero = null
         firstFocusable = null
         resumeRow = null
-        loading.visibility = View.VISIBLE
+        heroFeatures.clear()
+        heroIndex = 0
+        rotate = null
+        loading.visibility = View.GONE
+        val skeleton = skeleton()
+        column.addView(skeleton)
         job = act.launch {
-            // lugar fixo no topo para o mosaico; é preenchido depois, sem travar a tela
-            val mosaicHolder = FrameLayout(act)
-            column.addView(mosaicHolder, LinearLayout.LayoutParams(-1, -2))
-            try {
-                // 1) ESSENCIAL: categorias + fileiras (com teto de tempo para a tela nunca ficar presa)
-                val rowItems: List<Pair<Category, List<Media>>> = withTimeoutOrNull(20_000) {
-                    val catsByKind = kinds().associateWith { k -> runCatching { pick(Repo.categories(k), if (kind == null) 3 else 6) }.getOrDefault(emptyList()) }
-                    val rows = catsByKind.values.flatten().let { if (kind == null) interleave(it) else it }
-                    coroutineScope {
-                        rows.map { c -> c to async { runCatching { Repo.items(c) }.getOrDefault(emptyList()) } }
-                            .map { (c, d) -> c to d.await().sortedByDescending { it.added } }
-                    }
-                } ?: emptyList()
-
-                // já mostra o conteúdo e esconde o "carregando" — TMDB e mosaico entram depois
-                loading.visibility = View.GONE
-                loaded = true
-
-                val resume = addRow("Continuar assistindo", resumeItems(), Kind.MOVIE)
-                resumeRow = resume
-                if (resume.second.itemCount == 0) resume.first.visibility = View.GONE
-                val favs = Prefs.favorites().filter { it.kind != Kind.LIVE && (kind == null || it.kind == kind) }.map { PosterAdapter.from(it) }
-                if (favs.isNotEmpty()) addRow("Meus favoritos", favs, Kind.MOVIE)
-                if (kind == null) {
-                    val favLive = Prefs.favorites(Kind.LIVE).map { PosterAdapter.from(it) }
-                    if (favLive.isNotEmpty()) addRow("Canais favoritos", favLive, Kind.LIVE)
+            var error: Exception? = null
+            fun keep(e: Throwable) {
+                // só repassa o cancelamento se a própria tela foi cancelada (troca de aba, recarregar)
+                if (e is kotlinx.coroutines.CancellationException && !isActive) throw e
+                if (error == null && e is Exception) error = e
+            }
+            // 1) categorias e fileiras, com tempo máximo: nada de ficar carregando para sempre
+            val rowItems = try {
+                val catsByKind = coroutineScope {
+                    kinds().map { k ->
+                        async {
+                            try {
+                                withTimeoutOrNull(STEP_TIMEOUT) { pick(Repo.categories(k), if (kind == null) 3 else 6) } ?: emptyList()
+                            } catch (e: Exception) {
+                                keep(e); emptyList<Category>()
+                            }
+                        }
+                    }.map { it.await() }
                 }
-                var hasRows = false
-                for ((c, items) in rowItems) {
-                    if (items.isEmpty()) continue
-                    hasRows = true
-                    addRow(c.name, items.take(30).map { PosterAdapter.from(it) }, c.kind, c)
+                val rows = catsByKind.flatten().let { if (kind == null) interleave(it) else it }
+                coroutineScope {
+                    rows.map { c ->
+                        c to async {
+                            try {
+                                withTimeoutOrNull(STEP_TIMEOUT) { Repo.items(c) } ?: emptyList()
+                            } catch (e: Exception) {
+                                keep(e); emptyList<Media>()
+                            }
+                        }
+                    }.map { (c, d) -> c to d.await().sortedByDescending { it.added } }
                 }
-
-                // 2) OPCIONAL: TMDB "em alta" (não trava; teto de tempo)
-                val trending = if (Tmdb.enabled) (withTimeoutOrNull(12_000) {
-                    coroutineScope {
-                        kinds().map { k -> async { runCatching { Tmdb.trendingInCatalog(k == Kind.SERIES) }.getOrDefault(emptyList()) } }.flatMap { it.await() }
-                    }
-                } ?: emptyList()) else emptyList()
-                if (isActive && trending.isNotEmpty()) {
-                    addRow(if (kind == Kind.SERIES) "Séries em alta" else if (kind == Kind.MOVIE) "Filmes em alta" else "Em alta esta semana",
-                        trending.map { (t, m) -> PosterItem(m.name, t.poster.ifEmpty { m.icon }, m.kind, rating = t.rating, media = m) },
-                        Kind.MOVIE, index = column.indexOfChild(mosaicHolder) + 1)
-                }
-
-                // 3) OPCIONAL: mosaico no topo (não trava; teto de tempo)
-                if (isActive && PanelConfig.current.homeMosaic) {
-                    val features = (withTimeoutOrNull(12_000) { runCatching { buildFeatures(trending, rowItems) }.getOrNull() }) ?: emptyList()
-                    if (isActive && features.isNotEmpty()) {
-                        mosaicHolder.addView(mosaic(features))
-                        startRotation()
-                    }
-                }
-
-                // nada carregou mesmo: aviso com "tentar de novo"
-                val hasContent = hasRows || trending.isNotEmpty() || mosaicHolder.childCount > 0 ||
-                    (resumeRow?.second?.itemCount ?: 0) > 0 || favs.isNotEmpty()
-                if (!hasContent) showEmptyNotice()
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                throw e
             } catch (e: Exception) {
-                loading.visibility = View.GONE
-                loaded = true
-                act.handleError(e)
-                if (column.childCount <= 1) showEmptyNotice()
+                keep(e); emptyList<Pair<Category, List<Media>>>()
+            }
+
+            // 2) mostra já: mosaico com o que chegou + fileiras
+            column.removeView(skeleton)
+            if (PanelConfig.current.homeMosaic) {
+                val features = baseFeatures(rowItems)
+                if (features.isNotEmpty()) column.addView(mosaic(features))
+            }
+            // fileira de streamings (Netflix, Globoplay...) logo abaixo do destaque
+            // tela inicial: no lugar das fileiras de capas, os streamings (ícones grandes com o nome)
+            val homeStreams = kind == null && streamingList().isNotEmpty()
+            val streamBox = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; clipChildren = false; clipToPadding = false }
+            column.addView(streamBox, LinearLayout.LayoutParams(-1, -2))
+            runCatching { fillStreamings(streamBox, big = homeStreams) }.onFailure { streamBox.visibility = View.GONE }
+            val resume = addRow("Continuar assistindo", resumeItems(), Kind.MOVIE)
+            resumeRow = resume
+            if (resume.second.itemCount == 0) resume.first.visibility = View.GONE
+            val favs = Prefs.favorites().filter { it.kind != Kind.LIVE && (kind == null || it.kind == kind) }.map { PosterAdapter.from(it) }
+            if (favs.isNotEmpty()) addRow("Meus favoritos", favs, Kind.MOVIE)
+            if (kind == null) {
+                val favLive = Prefs.favorites(Kind.LIVE).map { PosterAdapter.from(it) }
+                if (favLive.isNotEmpty()) addRow("Canais favoritos", favLive, Kind.LIVE)
+            }
+            var rowsShown = 0
+            val repeated = rowItems.filter { it.second.isNotEmpty() }.groupingBy { Repo.normalize(it.first.name).trim() }.eachCount()
+            for ((c, items) in rowItems) {
+                if (items.isEmpty() || homeStreams) continue
+                // "Lançamentos" de filmes e de séries: deixa claro qual é qual
+                val label = if ((repeated[Repo.normalize(c.name).trim()] ?: 0) > 1) c.name + if (c.kind == Kind.SERIES) " · Séries" else " · Filmes" else c.name
+                addRow(label, items.take(30).map { PosterAdapter.from(it) }, c.kind, c)
+                rowsShown++
+            }
+            loaded = true
+            if (rowsShown == 0 && hero == null && !homeStreams) {
+                val e = error
+                if (e is AuthException) act.handleError(e)
+                showEmpty(if (e != null) "Não foi possível carregar o conteúdo agora." else "Nenhum destaque disponível.")
+            }
+            startRotation()
+
+            // 3) extras do TMDB em segundo plano (fundos em alta e "Em alta"), sem travar a tela
+            if (Tmdb.enabled) {
+                launch { runCatching { enrichHero() }.onFailure { if (it is kotlinx.coroutines.CancellationException) throw it } }
+                if (!homeStreams) launch { runCatching { addTrending() }.onFailure { if (it is kotlinx.coroutines.CancellationException) throw it } }
             }
         }
     }
 
-    private fun showEmptyNotice() {
-        column.addView(TextView(act).apply {
-            text = "Não foi possível carregar os destaques.\n${if (Ui.isTv) "Pressione OK" else "Toque aqui"} para tentar de novo."
-            setTextColor(Ui.text2)
-            gravity = Gravity.CENTER
-            setPadding(0, Ui.dp(act, 40), 0, 0)
+
+    private fun color(hex: String, def: Int): Int = runCatching { Color.parseColor(hex) }.getOrDefault(def)
+
+    /** Lista do painel (Streamings no admin); sem painel novo, usa a lista padrão. */
+    private fun streamingList(): List<StreamService> {
+        val cfg = PanelConfig.current
+        if (!cfg.streamingsEnabled) return emptyList()
+        cfg.streamings?.let { list ->
+            return list.map { StreamService(it.name, it.logo, color(it.color, Color.WHITE), color(it.textColor, Color.BLACK), it.keywords.ifEmpty { listOf(it.name) }) }
+        }
+        return listOf(
+            StreamService("Netflix", "", Color.BLACK, 0xFFE50914.toInt(), listOf("netflix")),
+            StreamService("Globoplay", "", 0xFFFF3D2E.toInt(), Color.WHITE, listOf("globoplay", "globo play")),
+            StreamService("Prime Video", "", 0xFF1A98FF.toInt(), Color.WHITE, listOf("prime video", "amazon")),
+            StreamService("Disney+", "", 0xFF0B1E5B.toInt(), Color.WHITE, listOf("disney")),
+            StreamService("HBO Max", "", Color.WHITE, Color.BLACK, listOf("hbo", "max")),
+            StreamService("Paramount+", "", 0xFF0064FF.toInt(), Color.WHITE, listOf("paramount")),
+            StreamService("Crunchyroll", "", 0xFFF47521.toInt(), Color.WHITE, listOf("crunchyroll")),
+            StreamService("Apple TV+", "", 0xFF111111.toInt(), Color.WHITE, listOf("apple")),
+            StreamService("Star+", "", 0xFF2A1A5E.toInt(), Color.WHITE, listOf("star+", "star plus")),
+            StreamService("Discovery+", "", 0xFF0A5BFF.toInt(), Color.WHITE, listOf("discovery")),
+        )
+    }
+
+    /** Mostra só os streamings que existem na lista do cliente (categorias com o nome do serviço). */
+    /** Círculos "fantasma" enquanto as categorias chegam (o espaço já fica reservado). */
+    /**
+     * Altura do destaque para a tela inicial caber inteira (destaque + atalhos + streamings).
+     * 0 = usa a proporção normal (celular em pé ou abas Filmes/Séries).
+     */
+    private fun fitHeroHeight(): Int {
+        if (portrait || kind != null || streamingList().isEmpty()) return 0
+        val avail = act.pagesContainer.height.takeIf { it > 0 } ?: (act.resources.displayMetrics.heightPixels - Ui.dp(act, 130))
+        val streams = Ui.dp(act, STREAM_BIG + 88)          // título + círculo + nome
+        val chrome = Ui.dp(act, 4 + 14 + 10 + TILE_H + 8)  // margens + atalhos
+        return (avail - streams - chrome).coerceIn(Ui.dp(act, 150), Ui.dp(act, 460))
+    }
+
+    private fun streamPlaceholder(): View {
+        val row = LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL; setPadding(Ui.dp(act, 4), Ui.dp(act, 4), 0, Ui.dp(act, 4)) }
+        val size = Ui.dp(act, 62)
+        repeat(6) {
+            row.addView(View(act).apply { background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Ui.withAlpha(Color.WHITE, 22)) } },
+                LinearLayout.LayoutParams(size, size).apply { marginEnd = Ui.dp(act, 14) })
+        }
+        return row
+    }
+
+    /** Desenha a fileira na hora (sem esperar a rede); a categoria de cada serviço é procurada no clique. */
+    private fun fillStreamings(box: LinearLayout, big: Boolean = false) {
+        val services = streamingList()
+        if (services.isEmpty()) { box.visibility = View.GONE; return }
+        box.visibility = View.VISIBLE
+        box.removeAllViews()
+        box.addView(title(PanelConfig.current.streamingsTitle, null))
+        val row = LinearLayout(act).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            clipChildren = false
+            clipToPadding = false
+            setPadding(Ui.dp(act, 8), Ui.dp(act, 8), Ui.dp(act, 24), Ui.dp(act, 12))
+        }
+        val size = Ui.dp(act, if (big) (if (portrait) 76 else STREAM_BIG) else if (portrait) 66 else 78)
+        services.forEach { st ->
+            val circle = runCatching { streamingCircle(st, size) }.getOrNull() ?: return@forEach
+            if (big) {
+                // ícone + nome embaixo
+                val cell = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; clipChildren = false; clipToPadding = false }
+                cell.addView(circle, LinearLayout.LayoutParams(size, size))
+                cell.addView(TextView(act).apply {
+                    text = st.label
+                    textSize = 13f
+                    setTextColor(Ui.text2)
+                    gravity = Gravity.CENTER
+                    maxLines = 1
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                    setPadding(0, Ui.dp(act, 8), 0, 0)
+                }, LinearLayout.LayoutParams(size + Ui.dp(act, 16), -2))
+                row.addView(cell, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = Ui.dp(act, if (portrait) 8 else 14) })
+            } else {
+                row.addView(circle, LinearLayout.LayoutParams(size, size).apply { marginEnd = Ui.dp(act, if (portrait) 14 else 18) })
+            }
+        }
+        box.addView(SafeHorizontalScrollView(act).apply {
+            isHorizontalScrollBarEnabled = false
+            clipChildren = false
+            clipToPadding = false
+            addView(row)
+        }, LinearLayout.LayoutParams(-1, -2))
+        Ui.fadeIn(box)
+    }
+
+    /** Círculo com a logo (ou o nome escrito, se o painel não tiver logo). */
+    private fun streamingCircle(st: StreamService, size: Int): View {
+        val frame = FrameLayout(act).apply {
             isFocusable = true
             isClickable = true
-            setOnClickListener { reload() }
-            firstFocusable = this
+            contentDescription = st.label
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(st.bg) }
+            foreground = android.graphics.drawable.StateListDrawable().apply {
+                fun ring(c: Int, w: Int) = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.TRANSPARENT); setStroke(w, c) }
+                addState(intArrayOf(android.R.attr.state_focused), ring(Color.WHITE, Ui.dp(act, 3)))
+                addState(intArrayOf(android.R.attr.state_pressed), ring(Color.WHITE, Ui.dp(act, 3)))
+                addState(intArrayOf(), ring(Ui.withAlpha(Color.WHITE, 45), Ui.dp(act, 1)))
+            }
+            elevation = Ui.dp(act, 5).toFloat()
+            outlineProvider = object : android.view.ViewOutlineProvider() {
+                override fun getOutline(view: View, outline: android.graphics.Outline) = outline.setOval(0, 0, view.width, view.height)
+            }
+            clipToOutline = true
+            setOnClickListener { act.openStreaming(st) }
+        }
+        val name = TextView(act).apply {
+            text = st.label
+            gravity = Gravity.CENTER
+            typeface = Typeface.DEFAULT_BOLD
+            textSize = if (st.label.length > 9) 10f else if (st.label.length > 6) 11.5f else 13f
+            setTextColor(st.fg)
+            maxLines = 2
+            setPadding(Ui.dp(act, 6), 0, Ui.dp(act, 6), 0)
+        }
+        frame.addView(name, FrameLayout.LayoutParams(-1, -1))
+        if (st.logo.isNotBlank()) {
+            val img = ImageView(act).apply { scaleType = ImageView.ScaleType.CENTER_CROP; visibility = View.INVISIBLE }
+            frame.addView(img, FrameLayout.LayoutParams(-1, -1))
+            img.load(st.logo) {
+                size(size, size)
+                crossfade(200)
+                listener(onSuccess = { _, _ -> img.visibility = View.VISIBLE; name.visibility = View.GONE })
+            }
+        }
+        Ui.focusZoom(frame, 1.12f, bouncy = true)
+        return frame
+    }
+
+    private fun showEmpty(msg: String) {
+        val box = LinearLayout(act).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(0, Ui.dp(act, 60), 0, Ui.dp(act, 20))
+        }
+        box.addView(ImageView(act).apply {
+            setImageResource(R.drawable.ic_movie)
+            imageTintList = android.content.res.ColorStateList.valueOf(Ui.withAlpha(Ui.text, 120))
+        }, LinearLayout.LayoutParams(Ui.dp(act, 56), Ui.dp(act, 56)))
+        box.addView(TextView(act).apply {
+            text = msg
+            textSize = 16f
+            setTextColor(Ui.text2)
+            gravity = Gravity.CENTER
+            setPadding(0, Ui.dp(act, 14), 0, Ui.dp(act, 18))
         })
+        val retry = TextView(act).apply {
+            text = "Tentar novamente"
+            textSize = 15f
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            isFocusable = true
+            isClickable = true
+            background = Ui.button(act, true)
+            setTextColor(Ui.textColors(Color.WHITE, Ui.focusText))
+            setPadding(Ui.dp(act, 28), Ui.dp(act, 12), Ui.dp(act, 28), Ui.dp(act, 12))
+            setOnClickListener { reload() }
+        }
+        Ui.focusZoom(retry, 1.05f)
+        box.addView(retry, LinearLayout.LayoutParams(-2, -2))
+        firstFocusable = retry
+        column.addView(box, LinearLayout.LayoutParams(-1, -2))
+        Ui.fadeIn(box)
+    }
+
+    /** Esqueleto animado enquanto o conteúdo chega (no lugar da bolinha girando). */
+    private fun skeleton(): View {
+        val r = Ui.radius(act) * 1.2f
+        val shade = Ui.withAlpha(Color.WHITE, 22)
+        val box = LinearLayout(act).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(Ui.dp(act, 4), Ui.dp(act, 6), Ui.dp(act, 4), 0)
+        }
+        val top = LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL }
+        val heroBox = AspectFrame(act).apply { ratio = if (portrait) 0.56f else 0.5f; background = Ui.rounded(shade, r) }
+        top.addView(heroBox, LinearLayout.LayoutParams(0, -2, 2f))
+        if (!portrait) repeat(2) {
+            top.addView(View(act).apply { background = Ui.rounded(shade, r) },
+                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 0.92f).apply { marginStart = Ui.dp(act, 10) })
+        }
+        box.addView(top, LinearLayout.LayoutParams(-1, -2))
+        repeat(2) {
+            box.addView(View(act).apply { background = Ui.rounded(shade, Ui.dp(act, 6).toFloat()) },
+                LinearLayout.LayoutParams(Ui.dp(act, 180), Ui.dp(act, 18)).apply { topMargin = Ui.dp(act, 22); bottomMargin = Ui.dp(act, 10) })
+            val row = LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL }
+            repeat(if (portrait) 3 else 7) { i ->
+                row.addView(View(act).apply { background = Ui.rounded(shade, Ui.radius(act).toFloat()) },
+                    LinearLayout.LayoutParams(Ui.dp(act, if (portrait) 108 else 122), Ui.dp(act, if (portrait) 160 else 180)).apply { if (i > 0) marginStart = Ui.dp(act, 10) })
+            }
+            box.addView(row)
+        }
+        android.animation.ObjectAnimator.ofFloat(box, View.ALPHA, 1f, 0.45f).apply {
+            duration = 750
+            repeatMode = android.animation.ValueAnimator.REVERSE
+            repeatCount = android.animation.ValueAnimator.INFINITE
+            box.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+                override fun onViewAttachedToWindow(v: View) = start()
+                override fun onViewDetachedFromWindow(v: View) = cancel()
+            })
+        }
+        return box
+    }
+
+    /** Fundos em alta resolução do TMDB para os primeiros destaques (troca na próxima volta). */
+    private suspend fun enrichHero() {
+        val snapshot = heroFeatures.take(6).toList()
+        val updates = coroutineScope {
+            snapshot.map { f ->
+                async {
+                    val m = f.media ?: return@async null
+                    if (f.image != m.icon) return@async null
+                    val info = withTimeoutOrNull(15_000) { runCatching { Tmdb.info(m) }.getOrNull() } ?: return@async null
+                    if (info.backdrop.isBlank()) null else f to f.copy(image = info.backdrop, subtitle = f.subtitle.ifBlank { info.genres })
+                }
+            }.mapNotNull { it.await() }
+        }
+        updates.forEach { (old, new) ->
+            val i = heroFeatures.indexOf(old)
+            if (i >= 0) heroFeatures[i] = new
+        }
+        if (updates.isNotEmpty() && hero?.hasFocus() != true) showHero?.invoke(heroIndex, false)
+    }
+
+    /** "Em alta esta semana" (TMDB x catálogo do cliente): entra depois, sem segurar a tela. */
+    private suspend fun addTrending() {
+        val trending = withTimeoutOrNull(TRENDING_TIMEOUT) {
+            coroutineScope {
+                kinds().map { k -> async { runCatching { Tmdb.trendingInCatalog(k == Kind.SERIES) }.getOrDefault(emptyList()) } }.flatMap { it.await() }
+            }
+        }.orEmpty()
+        if (trending.isEmpty()) return
+        val title = if (kind == Kind.SERIES) "Séries em alta" else if (kind == Kind.MOVIE) "Filmes em alta" else "Em alta esta semana"
+        val (box, _) = addRow(title, trending.map { (t, m) -> PosterItem(m.name, t.poster.ifEmpty { m.icon }, m.kind, rating = t.rating, media = m) }, Kind.MOVIE)
+        // posiciona logo depois de "Continuar assistindo"
+        val anchor = resumeRow?.first?.let { column.indexOfChild(it) } ?: -1
+        if (anchor >= 0) {
+            column.removeView(box)
+            column.addView(box, anchor + 1)
+        }
+        if (heroFeatures.isNotEmpty()) {
+            val seen = heroFeatures.mapNotNull { it.media?.key }.toHashSet()
+            val extra = trending.filter { seen.add(it.second.key) }.take(4).map { (t, m) ->
+                Feature(m.name, listOf(t.year, if (t.rating.isNotEmpty()) "★ ${t.rating}" else "").filter { it.isNotEmpty() }.joinToString("  •  "),
+                    t.backdrop.ifEmpty { m.icon }, t.poster.ifEmpty { m.icon }, m, null)
+            }
+            val at = PanelConfig.current.banners.size.coerceAtMost(heroFeatures.size)
+            heroFeatures.addAll(at, extra)
+            while (heroFeatures.size > 12) heroFeatures.removeAt(heroFeatures.size - 1)
+            if (heroIndex >= heroFeatures.size) heroIndex = 0
+            if (hero?.hasFocus() != true) showHero?.invoke(heroIndex, false)
+        }
     }
 
     private val priority = listOf("lanc", "estreia", "cinema", "2026", "2025", "novidade", "recente", "top", "netflix", "4k")
@@ -231,30 +494,15 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
 
     // ------------------------------------------------------------------ mosaico
 
-    private suspend fun buildFeatures(trending: List<Pair<Tmdb.Trend, Media>>, rows: List<Pair<Category, List<Media>>>): List<Feature> {
+    private fun baseFeatures(rows: List<Pair<Category, List<Media>>>): List<Feature> {
         val out = mutableListOf<Feature>()
         if (kind == null) {
             PanelConfig.current.banners.forEach { b -> out.add(Feature(b.title, b.subtitle, b.image, b.image, null, b)) }
         }
-        trending.forEach { (t, m) ->
-            out.add(Feature(m.name, listOf(t.year, if (t.rating.isNotEmpty()) "★ ${t.rating}" else "").filter { it.isNotEmpty() }.joinToString("  •  "),
-                t.backdrop.ifEmpty { m.icon }, t.poster.ifEmpty { m.icon }, m, null))
-        }
-        val seen = out.mapNotNull { it.media?.key }.toMutableSet()
+        val seen = HashSet<String>()
         rows.flatMap { it.second.take(4) }.filter { it.icon.isNotBlank() && seen.add(it.key) }.take(8).forEach { m ->
             out.add(Feature(m.name, listOf(m.year, if (m.rating.isNotEmpty()) "★ ${m.rating}" else "").filter { it.isNotEmpty() }.joinToString("  •  "),
                 m.icon, m.icon, m, null))
-        }
-        // fundos em alta resolução do TMDB para os primeiros destaques
-        if (Tmdb.enabled) coroutineScope {
-            out.take(6).mapIndexed { i, f ->
-                async {
-                    val m = f.media ?: return@async null
-                    if (f.image != m.icon) return@async null
-                    val info = runCatching { Tmdb.info(m) }.getOrNull() ?: return@async null
-                    if (info.backdrop.isBlank()) null else i to f.copy(image = info.backdrop, subtitle = f.subtitle.ifBlank { info.genres })
-                }
-            }.mapNotNull { it.await() }.forEach { (i, f) -> out[i] = f }
         }
         return out.take(10)
     }
@@ -272,6 +520,9 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
 
         // destaque grande
         val heroFrame = AspectFrame(act).apply { ratio = if (portrait) 0.56f else 0.5f }
+        // TV / deitado: destaque na medida para os streamings caberem sem rolar
+        val fitH = fitHeroHeight()
+        if (fitH > 0) heroFrame.fixedHeight = fitH
         heroFrame.isFocusable = true
         heroFrame.isClickable = true
         heroFrame.background = Ui.rounded(Ui.surface, r)
@@ -291,6 +542,10 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
             maxLines = 2
             ellipsize = android.text.TextUtils.TruncateAt.END
             setShadowLayer(8f, 0f, 2f, Color.BLACK)
+        }
+        if (fitH in 1 until Ui.dp(act, 210)) {
+            heroTitle.maxLines = 1
+            heroTitle.textSize = 24f
         }
         val heroSub = TextView(act).apply { textSize = 14f; setTextColor(Ui.withAlpha(Color.WHITE, 220)); maxLines = 1 }
         val heroCta = TextView(act).apply {
@@ -312,10 +567,12 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
         heroFrame.foreground = Ui.posterFrame(act)
         Ui.focusZoom(heroFrame, 1.02f)
 
-        val heroList = features
-        var index = 0
-        fun showHero(i: Int, animate: Boolean) {
-            val f = heroList[i]
+        heroFeatures.clear()
+        heroFeatures.addAll(features)
+        heroIndex = 0
+        val heroList = heroFeatures
+        fun renderHero(i: Int, animate: Boolean) {
+            val f = heroList.getOrNull(i) ?: return
             if (animate) heroImg.animate().alpha(0.2f).setDuration(180).withEndAction {
                 heroImg.load(f.image.ifBlank { null }) { crossfade(350); error(R.drawable.ic_movie) }
                 heroImg.animate().alpha(1f).setDuration(260).start()
@@ -331,12 +588,15 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
                 }, LinearLayout.LayoutParams(Ui.dp(act, if (d == i) 18 else 7), Ui.dp(act, 7)).apply { marginStart = Ui.dp(act, 4) })
             }
         }
-        showHero(0, false)
-        heroFrame.setOnClickListener { openFeature(heroList[index]) }
+        renderHero(0, false)
+        showHero = { i, anim -> renderHero(i, anim) }
+        heroFrame.setOnClickListener { heroList.getOrNull(heroIndex)?.let { openFeature(it) } }
         hero = heroFrame
         rotate = {
-            index = (index + 1) % heroList.size
-            showHero(index, true)
+            if (heroList.isNotEmpty()) {
+                heroIndex = (heroIndex + 1) % heroList.size
+                renderHero(heroIndex, true)
+            }
         }
 
         left.addView(heroFrame, LinearLayout.LayoutParams(-1, -2))
@@ -355,6 +615,16 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
     }
 
     private var rotate: (() -> Unit)? = null
+    private var showHero: ((Int, Boolean) -> Unit)? = null
+    private val heroFeatures = mutableListOf<Feature>()
+    private var heroIndex = 0
+
+    private companion object {
+        const val STEP_TIMEOUT = 25_000L
+        const val TRENDING_TIMEOUT = 60_000L
+        const val STREAM_BIG = 70
+        const val TILE_H = 62
+    }
 
     private fun startRotation() {
         rotateJob?.cancel()
@@ -425,19 +695,23 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
     }
 
     private fun tilesRow(): View {
-        val row = LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL; clipChildren = false }
+        val row = LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL; clipChildren = false; clipToPadding = false }
         val list = tiles()
         list.forEachIndexed { i, t ->
             val r = Ui.radius(act).toFloat()
+            // ícone em cima e texto embaixo: cabe inteiro em qualquer largura (nada cortado)
             val box = LinearLayout(act).apply {
-                orientation = if (portrait) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
+                orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
                 isFocusable = true
                 isClickable = true
-                val p = Ui.dp(act, if (portrait) 8 else 12)
+                val p = Ui.dp(act, 6)
                 setPadding(p, p, p, p)
                 background = android.graphics.drawable.StateListDrawable().apply {
-                    val normal = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(Ui.withAlpha(t.c1, 225), Ui.withAlpha(t.c2, 225))).apply { cornerRadius = r }
+                    val normal = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(Ui.withAlpha(t.c1, 215), Ui.withAlpha(t.c2, 215))).apply {
+                        cornerRadius = r
+                        setStroke(Ui.dp(act, 1), Ui.withAlpha(Color.WHITE, 40))
+                    }
                     val focused = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(t.c1, t.c2)).apply {
                         cornerRadius = r
                         setStroke(Ui.dp(act, 3), Color.WHITE)
@@ -451,18 +725,22 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
             box.addView(ImageView(act).apply {
                 setImageResource(t.icon)
                 imageTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
-            }, LinearLayout.LayoutParams(Ui.dp(act, 24), Ui.dp(act, 24)))
+            }, LinearLayout.LayoutParams(Ui.dp(act, 22), Ui.dp(act, 22)))
             box.addView(TextView(act).apply {
                 text = t.label
-                textSize = if (portrait) 12f else 15f
+                textSize = if (portrait) 12f else 13f
                 typeface = Typeface.DEFAULT_BOLD
                 setTextColor(Color.WHITE)
+                gravity = Gravity.CENTER
                 maxLines = 1
-                setPadding(if (portrait) 0 else Ui.dp(act, 10), if (portrait) Ui.dp(act, 4) else 0, 0, 0)
-            })
+                isSingleLine = true
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                if (android.os.Build.VERSION.SDK_INT >= 23) hyphenationFrequency = android.text.Layout.HYPHENATION_FREQUENCY_NONE
+                setPadding(0, Ui.dp(act, 4), 0, 0)
+            }, LinearLayout.LayoutParams(-1, -2))
             Ui.focusZoom(box, 1.06f)
-            row.addView(box, LinearLayout.LayoutParams(0, Ui.dp(act, if (portrait) 64 else 58), 1f).apply {
-                if (i > 0) marginStart = Ui.dp(act, 10)
+            row.addView(box, LinearLayout.LayoutParams(0, Ui.dp(act, 62), 1f).apply {
+                if (i > 0) marginStart = Ui.dp(act, if (portrait) 8 else 10)
             })
         }
         return row
@@ -527,7 +805,7 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
         return row
     }
 
-    private fun addRow(name: String, items: List<PosterItem>, rowKind: Kind, category: Category? = null, index: Int = -1): Pair<View, PosterAdapter> {
+    private fun addRow(name: String, items: List<PosterItem>, rowKind: Kind, category: Category? = null): Pair<View, PosterAdapter> {
         val box = LinearLayout(act).apply {
             orientation = LinearLayout.VERTICAL
             clipChildren = false
@@ -548,8 +826,7 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
         adapter.submit(items)
         rowAdapters.add(adapter)
         box.addView(rv, LinearLayout.LayoutParams(-1, -2))
-        if (index in 0..column.childCount) column.addView(box, index, LinearLayout.LayoutParams(-1, -2))
-        else column.addView(box, LinearLayout.LayoutParams(-1, -2))
+        column.addView(box, LinearLayout.LayoutParams(-1, -2))
         if (hero == null && firstFocusable == null && items.isNotEmpty()) rv.post { firstFocusable = rv.getChildAt(0) }
         Ui.fadeIn(box)
         return box to adapter

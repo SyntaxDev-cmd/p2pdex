@@ -2,6 +2,8 @@ package com.novatv.app.data
 
 import android.net.Uri
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.util.concurrent.ConcurrentHashMap
@@ -184,23 +186,74 @@ object Tmdb {
         }
     }
 
-    /** Liga os títulos em alta do TMDB aos itens que existem no catálogo do cliente. */
-    suspend fun trendingInCatalog(tv: Boolean): List<Pair<Trend, Media>> {
-        // TV Box com pouca memória: não carrega o catálogo inteiro só para esta fileira
-        if (com.novatv.app.ui.Ui.isLowRam(com.novatv.app.App.instance)) return emptyList()
-        val trends = trending(tv)
+    private fun trendOf(o: JSONObject, tv: Boolean): Trend {
+        val vote = o.optDouble("vote_average", 0.0)
+        return Trend(
+            id = o.optInt("id"), tv = tv,
+            title = o.optString(if (tv) "name" else "title"),
+            poster = img(o.optString("poster_path"), "w342"),
+            backdrop = img(o.optString("backdrop_path"), "w1280"),
+            rating = if (vote > 0) String.format(java.util.Locale.US, "%.1f", vote) else "",
+            year = o.optString(if (tv) "first_air_date" else "release_date").take(4),
+        )
+    }
+
+    /** Liga títulos do TMDB aos itens que existem no catálogo do cliente (pelo nome). */
+    private suspend fun inCatalog(trends: List<Trend>, tv: Boolean): List<Pair<Trend, Media>> {
         if (trends.isEmpty()) return emptyList()
         val kind = if (tv) Kind.SERIES else Kind.MOVIE
         val index = runCatching { Repo.searchIndex(kind) }.getOrDefault(emptyList())
-        if (index.isEmpty() || index.size > 60_000) return emptyList()
+        if (index.isEmpty() || index.size > 80_000) return emptyList()
         val byTitle = HashMap<String, Media>()
-        index.forEach { (n, m) ->
+        index.forEach { (_, m) ->
             val k = Repo.normalize(clean(m.name).first).replace(Regex("[^a-z0-9]"), "")
             if (k.isNotEmpty()) byTitle.putIfAbsent(k, m)
         }
         return trends.mapNotNull { t ->
             val k = Repo.normalize(t.title).replace(Regex("[^a-z0-9]"), "")
             byTitle[k]?.let { t to it }
+        }.distinctBy { it.second.key }
+    }
+
+    /** IDs do TMDB dos serviços de streaming no Brasil (pelo nome cadastrado no painel). */
+    fun providerIds(name: String): String {
+        val n = Repo.normalize(name)
+        return when {
+            "netflix" in n -> "8"
+            "globo" in n -> "307"
+            "prime" in n || "amazon" in n -> "119"
+            "disney" in n -> "337"
+            "hbo" in n || n == "max" -> "1899|384"
+            "paramount" in n -> "531"
+            "apple" in n -> "350"
+            "crunchyroll" in n -> "283"
+            "star" in n -> "619"
+            "looke" in n -> "47"
+            "mubi" in n -> "11"
+            else -> ""
         }
+    }
+
+    /** O que está no serviço de streaming (Brasil, mais populares) e existe na lista do cliente. */
+    suspend fun providerInCatalog(ids: String, tv: Boolean): List<Media> {
+        if (!enabled || ids.isBlank()) return emptyList()
+        val trends: List<Trend> = coroutineScope {
+            (1..5).map { page ->
+                async {
+                    get(if (tv) "/discover/tv" else "/discover/movie", mapOf(
+                        "with_watch_providers" to ids, "watch_region" to "BR",
+                        "sort_by" to "popularity.desc", "page" to page.toString(),
+                    ))?.optJSONArray("results")?.let { arr -> (0 until arr.length()).mapNotNull { arr.optJSONObject(it)?.let { o -> trendOf(o, tv) } } }.orEmpty()
+                }
+            }.flatMap { it.await() }
+        }
+        return inCatalog(trends, tv).map { it.second }
+    }
+
+    /** Liga os títulos em alta do TMDB aos itens que existem no catálogo do cliente. */
+    suspend fun trendingInCatalog(tv: Boolean): List<Pair<Trend, Media>> {
+        // TV Box com pouca memória: não carrega o catálogo inteiro só para esta fileira
+        if (com.novatv.app.ui.Ui.isLowRam(com.novatv.app.App.instance)) return emptyList()
+        return inCatalog(trending(tv), tv)
     }
 }

@@ -36,6 +36,8 @@ import java.util.Locale
 @OptIn(UnstableApi::class)
 class PlayerActivity : BaseActivity() {
 
+    override val fitInsets: Boolean = false
+
     override val keepScreenOn: Boolean = true
 
     private lateinit var playerView: PlayerView

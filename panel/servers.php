@@ -10,6 +10,9 @@ function normalize_url(string $u): string
     $u = trim($u);
     if ($u === '') return '';
     if (!preg_match('#^https?://#i', $u)) $u = 'http://' . $u;
+    // aceita a DNS colada com /player_api.php, ?username=... ou barra no fim
+    $u = preg_replace('#[?\#].*$#', '', $u);
+    $u = preg_replace('#/(player_api|get|panel_api|xmltv)\.php$#i', '', rtrim($u, '/'));
     return rtrim($u, '/');
 }
 
@@ -110,7 +113,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $testResult['rows'][] = ['url' => preg_replace('#(password=)[^&]+#', '$1***', $url), 'ok' => $count > 0, 'ms' => $r['ms'], 'info' => $count > 0 ? "$count itens na lista" : ('HTTP ' . $r['code'] . ' ' . $r['error'])];
         } elseif ($srv) {
             $u = $user . (str_starts_with($srv['p2p_email'], '@') ? $srv['p2p_email'] : '');
-            foreach (lines($srv['urls']) as $base) {
+            $bases = lines($srv['urls']);
+            // também testa o mesmo domínio em https:// (muitos P2P só respondem assim)
+            foreach (lines($srv['urls']) as $b0) {
+                if (stripos($b0, 'http://') === 0) $bases[] = 'https://' . preg_replace('#:80$#', '', substr($b0, 7));
+            }
+            foreach (array_unique($bases) as $base) {
                 $r = http_get($base . '/player_api.php?username=' . rawurlencode($u) . '&password=' . rawurlencode($pass), $srv['user_agent'] ?: setting('default_user_agent'));
                 $j = json_decode($r['body'], true);
                 $ok = is_array($j) && (int)($j['user_info']['auth'] ?? 0) === 1;
@@ -119,9 +127,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $exp = !empty($ui['exp_date']) ? date('d/m/Y', (int)$ui['exp_date']) : 'sem validade';
                     $info = 'Status: ' . ($ui['status'] ?? '?') . ' · expira ' . $exp . ' · conexões ' . ($ui['active_cons'] ?? '0') . '/' . ($ui['max_connections'] ?? '?');
                 } elseif (is_array($j)) {
-                    $info = 'Servidor respondeu, mas login recusado';
+                    $info = 'Servidor respondeu, mas login recusado (usuário enviado: ' . $u . ')';
                 } else {
-                    $info = 'HTTP ' . $r['code'] . ($r['error'] ? ' · ' . $r['error'] : '') . ' · resposta não é API Xtream';
+                    // mostra o começo da resposta para descobrir o formato da API
+                    $snippet = trim(preg_replace('/\s+/', ' ', strip_tags(mb_substr((string)$r['body'], 0, 400))));
+                    if (preg_match('/error code: (\d{3,4})/', (string)$r['body'], $cf)) {
+                        $snippet = 'Cloudflare erro ' . $cf[1] . ': o domínio está mal configurado/fora do ar nesse endereço.';
+                    } elseif (stripos((string)$r['body'], 'Just a moment') !== false) {
+                        $snippet = 'Cloudflare pediu verificação anti-robô (normal ao testar a partir de servidores; no aparelho do cliente costuma passar).';
+                    }
+                    $info = 'HTTP ' . $r['code'] . ($r['error'] ? ' · ' . $r['error'] : '') . ' · resposta não é API Xtream'
+                        . ($snippet !== '' ? ' · resposta: "' . mb_substr($snippet, 0, 160) . '"' : ' · resposta vazia');
                 }
                 $testResult['rows'][] = ['url' => $base, 'ok' => $ok, 'ms' => $r['ms'], 'info' => $info];
             }

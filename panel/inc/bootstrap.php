@@ -142,6 +142,16 @@ function migrate(PDO $pdo): void
             position INTEGER NOT NULL DEFAULT 0,
             active INTEGER NOT NULL DEFAULT 1
         );
+        CREATE TABLE IF NOT EXISTS streamings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            logo TEXT NOT NULL DEFAULT '',
+            keywords TEXT NOT NULL DEFAULT '',
+            color TEXT NOT NULL DEFAULT '#FFFFFF',
+            text_color TEXT NOT NULL DEFAULT '#000000',
+            position INTEGER NOT NULL DEFAULT 0,
+            active INTEGER NOT NULL DEFAULT 1
+        );
         CREATE TABLE IF NOT EXISTS messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             title TEXT NOT NULL,
@@ -206,6 +216,16 @@ function migrate(PDO $pdo): void
         CREATE INDEX IF NOT EXISTS idx_servers_reseller ON servers(reseller_id, active);
     ");
 
+    // streamings padrão (só na primeira vez; depois o admin edita/remove à vontade)
+    $seeded = $pdo->query("SELECT value FROM settings WHERE key='streamings_seeded'");
+    if (!($seeded && $seeded->fetchColumn())) {
+        if ((int)$pdo->query('SELECT COUNT(*) FROM streamings')->fetchColumn() === 0) {
+            $st = $pdo->prepare('INSERT INTO streamings (name, keywords, color, text_color, position) VALUES (?, ?, ?, ?, ?)');
+            foreach (default_streamings() as $i => $d) $st->execute([$d[0], $d[1], $d[2], $d[3], $i + 1]);
+        }
+        $pdo->prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('streamings_seeded', '1')")->execute();
+    }
+
     $ins = $pdo->prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
     foreach (default_settings() as $k => $v) {
         $ins->execute([$k, (string)$v]);
@@ -216,6 +236,52 @@ function migrate(PDO $pdo): void
     if (!$key) {
         $pdo->prepare("UPDATE settings SET value=? WHERE key='api_key'")->execute([bin2hex(random_bytes(16))]);
     }
+}
+
+/** Ligas da ESPN que o NovaSports pode mostrar: código => nome (ordem padrão). */
+function sports_catalog(): array
+{
+    return [
+        'bra.1' => 'Brasileirão', 'conmebol.libertadores' => 'Libertadores', 'bra.copa_do_brazil' => 'Copa do Brasil',
+        'uefa.champions' => 'Champions League', 'conmebol.sudamericana' => 'Sul-Americana', 'bra.2' => 'Série B',
+        'eng.1' => 'Premier League', 'esp.1' => 'LaLiga', 'ita.1' => 'Serie A (Itália)', 'ger.1' => 'Bundesliga',
+        'fra.1' => 'Ligue 1', 'por.1' => 'Liga Portugal', 'uefa.europa' => 'Europa League', 'arg.1' => 'Argentina',
+        'bra.camp.paulista' => 'Paulistão', 'bra.camp.carioca' => 'Carioca', 'bra.camp.mineiro' => 'Mineiro',
+        'bra.camp.gaucho' => 'Gaúcho', 'usa.1' => 'MLS', 'fifa.world' => 'Copa do Mundo', 'uefa.nations' => 'Nations League',
+        'conmebol.america' => 'Copa América', 'fifa.cwc' => 'Mundial de Clubes', 'sau.1' => 'Liga Saudita', 'ned.1' => 'Eredivisie',
+    ];
+}
+
+/** Ligas escolhidas no painel, na ordem: [[code, name], ...]. Vazio = padrão do app. */
+function sports_leagues(): array
+{
+    $raw = json_decode(setting('sports_leagues'), true);
+    if (!is_array($raw) || !$raw) return [];
+    $out = [];
+    foreach ($raw as $l) {
+        if (!is_array($l) || empty($l['code']) || empty($l['name'])) continue;
+        $out[] = ['code' => (string)$l['code'], 'name' => (string)$l['name']];
+    }
+    return $out;
+}
+
+/** [nome, palavras das categorias, cor do círculo, cor do texto] */
+function default_streamings(): array
+{
+    return [
+        ['Netflix', 'netflix', '#000000', '#E50914'],
+        ['Globoplay', 'globoplay, globo play', '#FF3D2E', '#FFFFFF'],
+        ['Prime Video', 'prime video, amazon', '#1A98FF', '#FFFFFF'],
+        ['Disney+', 'disney', '#0B1E5B', '#FFFFFF'],
+        ['HBO Max', 'hbo, max', '#FFFFFF', '#000000'],
+        ['Paramount+', 'paramount', '#0064FF', '#FFFFFF'],
+        ['Crunchyroll', 'crunchyroll', '#F47521', '#FFFFFF'],
+        ['Apple TV+', 'apple', '#111111', '#FFFFFF'],
+        ['Star+', 'star+, star plus', '#2A1A5E', '#FFFFFF'],
+        ['Discovery+', 'discovery', '#0A5BFF', '#FFFFFF'],
+        ['Univer', 'univer', '#7B2FF7', '#FFFFFF'],
+        ['Looke', 'looke', '#00B5AD', '#FFFFFF'],
+    ];
 }
 
 function default_settings(): array
@@ -269,9 +335,25 @@ function default_settings(): array
         'default_user_agent' => '',
         'epg_enabled' => '1',
         // Jogos do dia
+        // App de esportes (NovaSports): marca, cores, ligas e atualização próprias
+        'sports_app_name' => 'NovaSports',
+        'sports_logo' => '',
+        'sports_welcome' => 'Todo o futebol em um só lugar.',
+        'sports_color_primary' => '#19C463',
+        'sports_color_accent' => '#B6FF3B',
+        'sports_color_bg1' => '#0B6B35',
+        'sports_color_bg2' => '#02160B',
+        'sports_color_text2' => '#CFF5D9',
+        'sports_leagues' => '',
+        'sports_keywords' => '',
+        'sports_latest_version_code' => '0',
+        'sports_update_url' => '',
+        'sports_force_update' => '0',
+        'streamings_enabled' => '1',
+        'streamings_title' => 'Streamings',
         'games_enabled' => '1',
         'games_api_url' => 'https://xsender.painelmaster.lol/retornojogosmx.json',
-        'games_cache_minutes' => '10',
+        'games_cache_minutes' => '3',
         'games_map' => '',
         // TMDB
         'tmdb_enabled' => '1',
@@ -287,7 +369,7 @@ function default_settings(): array
         'latest_version_code' => '1',
         'update_url' => '',
         'force_update' => '0',
-        'allow_server_select' => '1',
+        'allow_server_select' => '0',
         'register_devices' => '1',
         'api_key' => '',
         'api_key_required' => '0',

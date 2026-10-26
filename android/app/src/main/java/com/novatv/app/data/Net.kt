@@ -8,6 +8,11 @@ import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.ConnectionPool
 import okhttp3.Dispatcher
+import okhttp3.Dns
+import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.dnsoverhttps.DnsOverHttps
+import java.net.InetAddress
+import java.net.UnknownHostException
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -48,6 +53,11 @@ object Net {
             .followSslRedirects(true)
             .retryOnConnectionFailure(true)
         if (Build.VERSION.SDK_INT < 25) trustLetsEncrypt(ctx, base)
+        val bootstrap = base.build()
+        // operadoras costumam bloquear domínios de IPTV/P2P no DNS: se o DNS do aparelho
+        // não resolver, o app pergunta ao DNS seguro (DoH) da Cloudflare e do Google
+        base.dns(FallbackDns(listOf(doh(bootstrap, "https://cloudflare-dns.com/dns-query", "1.1.1.1", "1.0.0.1"),
+            doh(bootstrap, "https://dns.google/dns-query", "8.8.8.8", "8.8.4.4"))))
         val root = base.build()
 
         api = root.newBuilder()
@@ -63,6 +73,55 @@ object Net {
             .connectTimeout(8, TimeUnit.SECONDS)
             .readTimeout(15, TimeUnit.SECONDS)
             .build()
+    }
+
+    private fun doh(client: OkHttpClient, url: String, vararg ips: String): Dns =
+        DnsOverHttps.Builder().client(client.newBuilder().connectTimeout(5, TimeUnit.SECONDS).readTimeout(5, TimeUnit.SECONDS).build())
+            .url(url.toHttpUrl())
+            .bootstrapDnsHosts(ips.map { InetAddress.getByName(it) })
+            .includeIPv6(false)
+            .build()
+
+    /** IPv4 primeiro: muita rede doméstica anuncia IPv6 que não funciona e cada tentativa custa segundos. */
+    private fun ipv4First(list: List<InetAddress>): List<InetAddress> =
+        list.sortedBy { if (it is java.net.Inet4Address) 0 else 1 }
+
+    /** DNS do aparelho primeiro; se falhar (bloqueio, domínio novo), tenta o DNS seguro. */
+    private class FallbackDns(private val secure: List<Dns>) : Dns {
+        private val cache = java.util.concurrent.ConcurrentHashMap<String, List<InetAddress>>()
+
+        override fun lookup(hostname: String): List<InetAddress> {
+            cache[hostname]?.let { return it }
+            val first = try {
+                Dns.SYSTEM.lookup(hostname)
+            } catch (e: UnknownHostException) {
+                null
+            }
+            // 0.0.0.0 / 127.x = domínio bloqueado pela operadora
+            if (first != null && first.isNotEmpty() && first.none { it.isAnyLocalAddress || it.isLoopbackAddress }) return Net.ipv4First(first)
+            for (d in secure) {
+                try {
+                    val r = d.lookup(hostname)
+                    if (r.isNotEmpty()) {
+                        val sorted = Net.ipv4First(r)
+                        cache[hostname] = sorted
+                        return sorted
+                    }
+                } catch (_: Exception) {
+                }
+            }
+            if (first != null && first.isNotEmpty()) return first
+            throw UnknownHostException("Não foi possível encontrar $hostname")
+        }
+    }
+
+    /** Explica um erro de rede em português (aparece no login para facilitar o suporte). */
+    fun describe(e: Throwable): String = when (e) {
+        is UnknownHostException -> "endereço não encontrado (DNS)"
+        is java.net.SocketTimeoutException, is kotlinx.coroutines.TimeoutCancellationException -> "o servidor demorou demais para responder"
+        is java.net.ConnectException -> "o servidor recusou a conexão"
+        is javax.net.ssl.SSLException -> "falha de segurança HTTPS (certificado)"
+        else -> e.message?.takeIf { it.isNotBlank() } ?: e.javaClass.simpleName
     }
 
     /**
