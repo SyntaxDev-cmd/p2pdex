@@ -56,7 +56,7 @@ class GamesPage(act: MainActivity, id: String) : Page(act, id) {
     init {
         val pad = Ui.dp(act, if (portrait) 10 else 22)
         root.setPadding(pad, Ui.dp(act, 2), pad, 0)
-        root.addView(HorizontalScrollView(act).apply {
+        root.addView(SafeHorizontalScrollView(act).apply {
             isHorizontalScrollBarEnabled = false
             clipToPadding = false
             setPadding(0, Ui.dp(act, 2), 0, Ui.dp(act, 8))
@@ -92,7 +92,7 @@ class GamesPage(act: MainActivity, id: String) : Page(act, id) {
             while (isActive) {
                 delay(60_000)
                 n++
-                if (n % 5 == 0) load(true) else adapter.notifyDataSetChanged()
+                if (n % 5 == 0) load(true) else adapter.notifyItemRangeChanged(0, adapter.itemCount)
             }
         }
     }

@@ -54,7 +54,7 @@ object Dialogs {
             typeface = Typeface.DEFAULT_BOLD
         })
         if (!message.isNullOrBlank()) {
-            val sv = ScrollView(act)
+            val sv = SafeScrollView(act)
             sv.addView(TextView(act).apply {
                 text = message
                 setTextColor(Ui.withAlpha(Ui.text, 215))
@@ -203,7 +203,7 @@ object Dialogs {
                 bottomMargin = Ui.dp(act, 4)
             })
         }
-        val sv = ScrollView(act).apply { addView(list) }
+        val sv = SafeScrollView(act).apply { addView(list) }
         sv.layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         dialog = show(act, title, content = sv, buttons = listOf(Btn("Fechar")), onShow = {
             list.getChildAt(selected.coerceAtLeast(0))?.requestFocus()

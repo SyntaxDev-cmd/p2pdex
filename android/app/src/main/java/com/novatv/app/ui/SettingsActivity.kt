@@ -43,7 +43,7 @@ class SettingsActivity : BaseActivity() {
         window.setBackgroundDrawable(Ui.backgroundGradient())
 
         val root = FrameLayout(this)
-        val scroll = ScrollView(this).apply { isVerticalScrollBarEnabled = false; clipToPadding = false }
+        val scroll = SafeScrollView(this).apply { isVerticalScrollBarEnabled = false; clipToPadding = false }
         val column = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             val pad = Ui.dp(this@SettingsActivity, 20)
@@ -310,7 +310,7 @@ class SettingsActivity : BaseActivity() {
                 }
                 box.addView(tv, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = Ui.dp(this@SettingsActivity, 2) })
             }
-            val sv = ScrollView(this@SettingsActivity).apply { addView(box) }
+            val sv = SafeScrollView(this@SettingsActivity).apply { addView(box) }
             Dialogs.show(this@SettingsActivity, "Bloquear $label", "Itens com 🔒 pedem o PIN neste perfil.", content = sv, buttons = listOf(
                 Dialogs.Btn("Cancelar"),
                 Dialogs.Btn("Salvar", true) {

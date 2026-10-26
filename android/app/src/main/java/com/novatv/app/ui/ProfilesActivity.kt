@@ -111,7 +111,7 @@ class ProfilesActivity : BaseActivity() {
         manageBtn = Dialogs.button(this, "", false) { toggleManage() }
         column.addView(manageBtn, LinearLayout.LayoutParams(-2, -2).apply { topMargin = Ui.dp(this@ProfilesActivity, 28) })
 
-        val scroll = ScrollView(this).apply {
+        val scroll = SafeScrollView(this).apply {
             isFillViewport = true
             isVerticalScrollBarEnabled = false
             addView(FrameLayout(this@ProfilesActivity).apply {
@@ -326,7 +326,7 @@ class ProfilesActivity : BaseActivity() {
             emojiViews.add(tv)
             emojiRow.addView(tv, LinearLayout.LayoutParams(Ui.dp(this, 46), Ui.dp(this, 46)).apply { marginEnd = Ui.dp(this@ProfilesActivity, 4) })
         }
-        content.addView(HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; addView(emojiRow) })
+        content.addView(SafeHorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; addView(emojiRow) })
 
         content.addView(label("Cor"))
         val colorRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
@@ -356,7 +356,7 @@ class ProfilesActivity : BaseActivity() {
             colorViews.add(v)
             colorRow.addView(v, LinearLayout.LayoutParams(Ui.dp(this, 36), Ui.dp(this, 36)).apply { marginEnd = Ui.dp(this@ProfilesActivity, 10) })
         }
-        content.addView(HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; addView(colorRow) })
+        content.addView(SafeHorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; addView(colorRow) })
 
         val kidsToggle = toggleRow("Perfil infantil", "Mostra só conteúdo infantil", draft.kids) { on -> draft = draft.copy(kids = on) }
         content.addView(kidsToggle, LinearLayout.LayoutParams(-1, -2).apply { topMargin = Ui.dp(this@ProfilesActivity, 14) })
@@ -375,7 +375,7 @@ class ProfilesActivity : BaseActivity() {
         }
         content.addView(pinRow)
 
-        val sv = ScrollView(this).apply { addView(content) }
+        val sv = SafeScrollView(this).apply { addView(content) }
         val buttons = mutableListOf<Dialogs.Btn>()
         if (!isNew && Profiles.all().size > 1) buttons.add(Dialogs.Btn("Excluir") { confirmDelete(existing!!) })
         buttons.add(Dialogs.Btn("Cancelar"))

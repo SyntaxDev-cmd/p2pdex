@@ -36,3 +36,53 @@ class AspectFrame @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? =
         super.onMeasure(MeasureSpec.makeMeasureSpec(w, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(h, MeasureSpec.EXACTLY))
     }
 }
+
+/**
+ * ScrollView à prova do erro clássico de TV Box ("parameter must be a descendant of this view"):
+ * acontece quando o item focado sai da tela durante uma atualização e o ScrollView tenta rolar até ele.
+ */
+class SafeScrollView @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = null) : android.widget.ScrollView(ctx, attrs) {
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        try {
+            super.onSizeChanged(w, h, oldw, oldh)
+        } catch (e: IllegalArgumentException) {
+        }
+    }
+
+    override fun requestChildFocus(child: android.view.View?, focused: android.view.View?) {
+        try {
+            super.requestChildFocus(child, focused)
+        } catch (e: IllegalArgumentException) {
+        }
+    }
+
+    override fun requestChildRectangleOnScreen(child: android.view.View, rectangle: android.graphics.Rect, immediate: Boolean): Boolean =
+        try {
+            super.requestChildRectangleOnScreen(child, rectangle, immediate)
+        } catch (e: IllegalArgumentException) {
+            false
+        }
+}
+
+class SafeHorizontalScrollView @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = null) : android.widget.HorizontalScrollView(ctx, attrs) {
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        try {
+            super.onSizeChanged(w, h, oldw, oldh)
+        } catch (e: IllegalArgumentException) {
+        }
+    }
+
+    override fun requestChildFocus(child: android.view.View?, focused: android.view.View?) {
+        try {
+            super.requestChildFocus(child, focused)
+        } catch (e: IllegalArgumentException) {
+        }
+    }
+
+    override fun requestChildRectangleOnScreen(child: android.view.View, rectangle: android.graphics.Rect, immediate: Boolean): Boolean =
+        try {
+            super.requestChildRectangleOnScreen(child, rectangle, immediate)
+        } catch (e: IllegalArgumentException) {
+            false
+        }
+}

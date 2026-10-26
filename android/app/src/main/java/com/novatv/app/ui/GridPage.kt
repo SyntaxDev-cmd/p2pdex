@@ -99,7 +99,7 @@ class GridPage(act: MainActivity, id: String, private val mode: String) : Page(a
         else {
             // favoritos podem ter mudado em outra tela
             posters.refreshFavs()
-            current?.takeIf { it.special == "fav" }?.let { open(it, keepScroll = true) } ?: posters.notifyDataSetChanged()
+            current?.takeIf { it.special == "fav" }?.let { open(it, keepScroll = true) } ?: posters.refreshAll()
         }
     }
 

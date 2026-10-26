@@ -61,6 +61,12 @@ object Repo {
         synchronized(unlocked) { unlocked.clear() }
     }
 
+    /** Pouca memória: solta catálogos completos, índices e guias (são recarregados quando precisar). */
+    fun trimMemory() {
+        val heavy = listOf("all:", "idx:", "live:", "details:", "guide:", "epg:")
+        cache.keys.filter { k -> heavy.any { k.startsWith(it) } }.forEach { cache.remove(it) }
+    }
+
     private fun need(): Provider = provider ?: throw AuthException("Sessão expirada. Entre novamente.")
 
     @Suppress("UNCHECKED_CAST")

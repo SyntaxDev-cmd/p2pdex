@@ -75,6 +75,7 @@ class SectionBackdrop(ctx: Context) : View(ctx) {
         val s = style ?: return
         val w = width.toFloat()
         val h = height.toFloat()
+        if (w < 2f || h < 2f) return
         p.shader = LinearGradient(0f, 0f, w * 0.3f, h, s.bgTop, s.bgBottom, Shader.TileMode.CLAMP)
         c.drawRect(0f, 0f, w, h, p)
         p.shader = null

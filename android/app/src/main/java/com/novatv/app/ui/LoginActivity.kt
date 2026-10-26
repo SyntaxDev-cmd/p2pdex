@@ -250,10 +250,14 @@ class LoginActivity : BaseActivity() {
     private fun scrollTo(v: View) {
         val scroll = findViewById<ScrollView>(R.id.scroll)
         scroll.postDelayed({
-            val rect = android.graphics.Rect()
-            v.getDrawingRect(rect)
-            scroll.offsetDescendantRectToMyCoords(v, rect)
-            scroll.smoothScrollTo(0, (rect.top - Ui.dp(this, 90)).coerceAtLeast(0))
+            if (isFinishing || !v.isAttachedToWindow) return@postDelayed
+            try {
+                val rect = android.graphics.Rect()
+                v.getDrawingRect(rect)
+                scroll.offsetDescendantRectToMyCoords(v, rect)
+                scroll.smoothScrollTo(0, (rect.top - Ui.dp(this, 90)).coerceAtLeast(0))
+            } catch (e: IllegalArgumentException) {
+            }
         }, 250)
     }
 

@@ -38,6 +38,20 @@ object CrashReporter {
         }
     }
 
+    /** Erro que não derrubou o app (capturado): guarda para enviar ao painel. Falta de memória limpa os caches. */
+    fun nonFatal(e: Throwable) {
+        if (e is kotlinx.coroutines.CancellationException) return
+        if (e is OutOfMemoryError) Repo.trimMemory()
+        runCatching {
+            val f = file(com.novatv.app.App.instance)
+            if (f.exists()) return@runCatching // mantém o primeiro (mais importante)
+            val sw = StringWriter()
+            e.printStackTrace(PrintWriter(sw))
+            f.writeText("[nao fatal]\nversao=${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})\n" +
+                "aparelho=${Build.MANUFACTURER} ${Build.MODEL} android=${Build.VERSION.RELEASE}\n" + sw.toString().take(16_000))
+        }
+    }
+
     /** Envia o último erro (se houver) e apaga o arquivo. */
     suspend fun sendPending(ctx: Context) = withContext(Dispatchers.IO) {
         val f = file(ctx)

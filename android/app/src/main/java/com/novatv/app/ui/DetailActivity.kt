@@ -87,7 +87,7 @@ class DetailActivity : BaseActivity() {
         super.onResume()
         if (::media.isInitialized && details != null) {
             renderButtons()
-            episodeAdapter.notifyDataSetChanged()
+            episodeAdapter.notifyItemRangeChanged(0, episodeAdapter.itemCount)
         }
     }
 

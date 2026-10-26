@@ -246,7 +246,7 @@ class LivePage(act: MainActivity, id: String, private val mode: String) : Page(a
         val added = Prefs.toggleFavorite(m)
         Dialogs.toast(act, if (added) "♥ Adicionado aos favoritos" else "Removido dos favoritos")
         channels.refreshFavs()
-        channels.notifyDataSetChanged()
+        channels.refreshAll()
         updateFavButton()
         if (currentCat?.special == "fav") openCategory(currentCat!!)
     }

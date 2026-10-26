@@ -101,7 +101,7 @@
                 android:textStyle="bold" />
         </LinearLayout>
 
-        <HorizontalScrollView
+        <com.novatv.app.ui.SafeHorizontalScrollView
             android:id="@+id/tabsScroll"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -121,7 +121,7 @@
                 android:orientation="horizontal"
                 android:paddingTop="6dp"
                 android:paddingBottom="8dp" />
-        </HorizontalScrollView>
+        </com.novatv.app.ui.SafeHorizontalScrollView>
 
         <FrameLayout
             android:id="@+id/pages"

@@ -186,11 +186,13 @@ object Tmdb {
 
     /** Liga os títulos em alta do TMDB aos itens que existem no catálogo do cliente. */
     suspend fun trendingInCatalog(tv: Boolean): List<Pair<Trend, Media>> {
+        // TV Box com pouca memória: não carrega o catálogo inteiro só para esta fileira
+        if (com.novatv.app.ui.Ui.isLowRam(com.novatv.app.App.instance)) return emptyList()
         val trends = trending(tv)
         if (trends.isEmpty()) return emptyList()
         val kind = if (tv) Kind.SERIES else Kind.MOVIE
         val index = runCatching { Repo.searchIndex(kind) }.getOrDefault(emptyList())
-        if (index.isEmpty()) return emptyList()
+        if (index.isEmpty() || index.size > 60_000) return emptyList()
         val byTitle = HashMap<String, Media>()
         index.forEach { (n, m) ->
             val k = Repo.normalize(clean(m.name).first).replace(Regex("[^a-z0-9]"), "")

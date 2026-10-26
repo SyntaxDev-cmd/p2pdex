@@ -146,11 +146,13 @@ class ChannelAdapter(
         favKeys = Prefs.favorites(Kind.LIVE).map { it.key }.toSet()
     }
 
-    @SuppressLint("NotifyDataSetChanged")
+    /** Atualiza só a aparência dos itens (mantém o item focado no lugar). */
     fun setPlaying(key: String?) {
         playingKey = key
-        notifyDataSetChanged()
+        notifyItemRangeChanged(0, itemCount)
     }
+
+    fun refreshAll() = notifyItemRangeChanged(0, itemCount)
 
     class VH(v: View) : RecyclerView.ViewHolder(v) {
         val num: TextView = v.findViewById(R.id.num)
@@ -238,6 +240,9 @@ class PosterAdapter(
     fun refreshFavs() {
         favKeys = Prefs.favorites().map { it.key }.toSet()
     }
+
+    /** Redesenha os cartões sem recriá-los (o foco do controle remoto não se perde). */
+    fun refreshAll() = notifyItemRangeChanged(0, itemCount)
 
     class VH(v: View) : RecyclerView.ViewHolder(v) {
         val frame: AspectFrame = v.findViewById(R.id.frame)

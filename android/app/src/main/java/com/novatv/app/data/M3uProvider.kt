@@ -18,8 +18,11 @@ class M3uProvider(override val server: ServerDef, private val user: String, priv
     override val username: String get() = user
     override val activeBase: String get() = server.m3uUrl
 
-    private val cats = HashMap<Kind, MutableList<Category>>()
-    private val items = HashMap<Kind, MutableList<Media>>()
+    // trocados de uma vez ao terminar de ler a lista (leitura nunca vê dados pela metade)
+    @Volatile
+    private var cats: Map<Kind, List<Category>> = emptyMap()
+    @Volatile
+    private var items: Map<Kind, List<Media>> = emptyMap()
     @Volatile
     private var loaded = false
     /** url-tvg / x-tvg-url do cabeçalho #EXTM3U. */
@@ -38,8 +41,21 @@ class M3uProvider(override val server: ServerDef, private val user: String, priv
     private val cacheFile: File
         get() = File(App.instance.cacheDir, "m3u_${server.id}_${(user + url).hashCode()}.m3u")
 
-    private suspend fun ensure(force: Boolean = false) = withContext(Dispatchers.IO) {
-        if (loaded && !force) return@withContext
+    private val loadLock = kotlinx.coroutines.sync.Mutex()
+
+    /** Um carregamento por vez: duas telas pedindo a lista juntas não podem corromper os dados. */
+    private suspend fun ensure(force: Boolean = false) {
+        if (loaded && !force) return
+        loadLock.lock()
+        try {
+            if (loaded && !force) return
+            doEnsure(force)
+        } finally {
+            loadLock.unlock()
+        }
+    }
+
+    private suspend fun doEnsure(force: Boolean) = withContext(Dispatchers.IO) {
         val f = cacheFile
         val fresh = f.exists() && System.currentTimeMillis() - f.lastModified() < 6 * 3600_000L && f.length() > 0
         if (!fresh || force) {
@@ -65,8 +81,8 @@ class M3uProvider(override val server: ServerDef, private val user: String, priv
     private val attrRe = Regex("([\\w-]+)=\"([^\"]*)\"")
 
     private fun parse(r: BufferedReader) {
-        cats.clear()
-        items.clear()
+        val cats = HashMap<Kind, MutableList<Category>>()
+        val items = HashMap<Kind, MutableList<Media>>()
         val catIndex = HashMap<String, String>()
         var info: String? = null
         var group: String? = null
@@ -116,6 +132,8 @@ class M3uProvider(override val server: ServerDef, private val user: String, priv
             }
             line = r.readLine()
         }
+        this.cats = cats
+        this.items = items
     }
 
     override suspend fun login(): Account {

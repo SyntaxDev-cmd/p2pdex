@@ -57,7 +57,7 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
         clipChildren = false
         clipToPadding = false
     }
-    private val scroll = ScrollView(act).apply {
+    private val scroll = SafeScrollView(act).apply {
         isFillViewport = true
         isVerticalScrollBarEnabled = false
         isSmoothScrollingEnabled = true
@@ -96,7 +96,7 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
     fun focus(): Boolean = (firstFocusable ?: hero)?.requestFocus() ?: false
 
     private fun refreshDynamic() {
-        rowAdapters.forEach { it.refreshFavs(); it.notifyDataSetChanged() }
+        rowAdapters.forEach { it.refreshFavs(); it.refreshAll() }
         resumeRow?.let { (box, adapter) ->
             val items = resumeItems()
             adapter.submit(items)
@@ -528,7 +528,7 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
         val m = item.media ?: return
         val added = Prefs.toggleFavorite(m)
         Dialogs.toast(act, if (added) "♥ Adicionado aos favoritos" else "Removido dos favoritos")
-        rowAdapters.forEach { it.refreshFavs(); it.notifyDataSetChanged() }
+        rowAdapters.forEach { it.refreshFavs(); it.refreshAll() }
     }
 
     private fun open(item: PosterItem) {

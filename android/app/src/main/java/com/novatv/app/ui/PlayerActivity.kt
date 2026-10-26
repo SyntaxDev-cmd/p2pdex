@@ -153,6 +153,8 @@ class PlayerActivity : BaseActivity() {
 
     override fun onStart() {
         super.onStart()
+        // tela fechada logo na abertura (app reaberto pelo sistema ou player externo): nada a fazer
+        if (isFinishing || !::playerView.isInitialized) return
         if (player == null && PlayQueue.current != null) {
             val p = Players.create(this)
             p.addListener(listener)
@@ -176,7 +178,7 @@ class PlayerActivity : BaseActivity() {
             it.release()
         }
         player = null
-        playerView.player = null
+        if (::playerView.isInitialized) playerView.player = null
     }
 
     // ---------------------------------------------------------------- reprodução
@@ -395,7 +397,7 @@ class PlayerActivity : BaseActivity() {
         Dialogs.toast(this, if (added) "♥ ${m.name} adicionado aos favoritos" else "Removido dos favoritos")
         updateFavButton()
         overlayAdapter.refreshFavs()
-        overlayAdapter.notifyDataSetChanged()
+        overlayAdapter.refreshAll()
     }
 
     private fun updateFavButton() {

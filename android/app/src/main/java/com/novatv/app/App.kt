@@ -23,6 +23,17 @@ class App : Application(), ImageLoaderFactory {
         Ui.loadCachedTheme()
     }
 
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        // app em segundo plano ou sistema com pouca memória: libera catálogos grandes
+        if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) com.novatv.app.data.Repo.trimMemory()
+    }
+
+    override fun onLowMemory() {
+        super.onLowMemory()
+        com.novatv.app.data.Repo.trimMemory()
+    }
+
     override fun newImageLoader(): ImageLoader {
         val lowRam = Ui.isLowRam(this)
         return ImageLoader.Builder(this)

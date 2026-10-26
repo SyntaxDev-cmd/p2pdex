@@ -9,11 +9,19 @@ import android.view.WindowManager
 import android.widget.ImageView
 import coil.load
 import com.novatv.app.data.PanelConfig
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.plus
 
-abstract class BaseActivity : Activity(), CoroutineScope by MainScope() {
+/**
+ * Base das telas. As tarefas em segundo plano usam um escopo com tratador de erros:
+ * um erro inesperado é registrado (e enviado ao painel) em vez de fechar o app.
+ */
+abstract class BaseActivity : Activity(), CoroutineScope by MainScope() + CoroutineExceptionHandler({ _, e ->
+    com.novatv.app.data.CrashReporter.nonFatal(e)
+}) {
 
     override fun attachBaseContext(newBase: Context) {
         super.attachBaseContext(Ui.scaledContext(newBase))
