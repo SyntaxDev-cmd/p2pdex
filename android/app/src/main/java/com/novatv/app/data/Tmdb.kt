@@ -2,6 +2,8 @@ package com.novatv.app.data
 
 import android.net.Uri
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.util.concurrent.ConcurrentHashMap
@@ -235,9 +237,9 @@ object Tmdb {
     /** O que está no serviço de streaming (Brasil, mais populares) e existe na lista do cliente. */
     suspend fun providerInCatalog(ids: String, tv: Boolean): List<Media> {
         if (!enabled || ids.isBlank()) return emptyList()
-        val trends = kotlinx.coroutines.coroutineScope {
+        val trends: List<Trend> = coroutineScope {
             (1..5).map { page ->
-                kotlinx.coroutines.async {
+                async {
                     get(if (tv) "/discover/tv" else "/discover/movie", mapOf(
                         "with_watch_providers" to ids, "watch_region" to "BR",
                         "sort_by" to "popularity.desc", "page" to page.toString(),
