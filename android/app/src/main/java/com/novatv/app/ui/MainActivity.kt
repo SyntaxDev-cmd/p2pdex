@@ -366,6 +366,7 @@ class MainActivity : BaseActivity() {
                 backdrop.style = style
             }
             backdrop.animate().alpha(1f).setDuration(350).start()
+            backdrop.restart()
         } else {
             backdrop.animate().alpha(0f).setDuration(250).start()
         }

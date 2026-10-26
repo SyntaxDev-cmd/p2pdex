@@ -17,10 +17,14 @@ data class Game(
     val channels: List<String>,
     val status: String,
     val score: String,
+    /** minuto do jogo ao vivo ("40'") ou "Intervalo" */
+    val minute: String = "",
 ) {
     /** Recalcula o status no aparelho (a lista fica em cache). */
     fun liveStatus(now: Long = System.currentTimeMillis() / 1000): String = when {
         status == "ended" -> "ended"
+        // a API informou o minuto: está rolando agora
+        status == "live" && minute.isNotBlank() -> "live"
         ts <= 0 -> status
         now >= ts && now < ts + 2 * 3600 -> "live"
         now >= ts + 2 * 3600 -> "ended"
@@ -60,6 +64,7 @@ object Games {
                     channels = if (ch == null) emptyList() else (0 until ch.length()).map { ch.optString(it) }.filter { it.isNotBlank() },
                     status = g.optString("status"),
                     score = g.optString("score"),
+                    minute = g.optString("minute"),
                 )
             }
         }
@@ -88,6 +93,8 @@ object Games {
     private suspend fun match(game: Game): List<Media> {
         if (game.channels.isEmpty()) return emptyList()
         val lives = Repo.liveIndex()
+        // canais das categorias de esporte têm preferência ("DISNEY+" = Disney+ esportes, não o infantil)
+        val sportsIds = runCatching { Repo.filtered(Kind.LIVE, Repo.config.sportsKeywords).map { it.id }.toHashSet() }.getOrDefault(hashSetOf())
         val out = LinkedHashMap<String, Pair<Int, Media>>()
         for (wanted in game.channels) {
             val w = compact(wanted)
@@ -102,11 +109,13 @@ object Games {
                 }
                 if (score == 0) continue
                 val quality = Repo.normalize(m.name).let { n -> if ("fhd" in n || "4k" in n) 3 else if ("hd" in n) 2 else 0 }
-                val total = score + quality
+                val total = score + quality + if (m.categoryId in sportsIds) 30 else 0
                 val prev = out[m.key]
                 if (prev == null || prev.first < total) out[m.key] = total to m
             }
         }
-        return out.values.sortedByDescending { it.first }.map { it.second }.take(12)
+        val ranked = out.values.sortedByDescending { it.first }.map { it.second }
+        val sporty = ranked.filter { it.categoryId in sportsIds }
+        return sporty.ifEmpty { ranked }.take(12)
     }
 }

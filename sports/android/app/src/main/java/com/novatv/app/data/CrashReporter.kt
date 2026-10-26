@@ -44,7 +44,8 @@ object CrashReporter {
         if (e is OutOfMemoryError) Repo.trimMemory()
         runCatching {
             val f = file(com.novatv.app.App.instance)
-            if (f.exists()) return@runCatching // mantém o primeiro (mais importante)
+            // mantém um erro fatal pendente; entre os não fatais, guarda o mais recente
+            if (f.exists() && !f.readText().startsWith("[nao fatal]")) return@runCatching
             val sw = StringWriter()
             e.printStackTrace(PrintWriter(sw))
             f.writeText("[nao fatal]\nversao=${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})\n" +

@@ -274,7 +274,7 @@ class PosterAdapter(
             setColor(Ui.withAlpha(Color.BLACK, 170))
         }
         h.fav.imageTintList = android.content.res.ColorStateList.valueOf(Ui.fav)
-        Ui.focusZoom(v, if (section?.id == "kids") 1.12f else 1.08f, bouncy = section?.id == "kids")
+        Ui.focusZoom(v, if (section?.id == "kids") 1.12f else if (section?.id == "anime") 1.1f else 1.08f, bouncy = section?.id == "kids" || section?.id == "anime")
         v.setOnClickListener {
             val p = h.bindingAdapterPosition
             if (p != RecyclerView.NO_POSITION) onClick(p, items[p])

@@ -52,8 +52,8 @@ class GridPage(act: MainActivity, id: String, private val mode: String) : Page(a
         val headerView = view.findViewById<TextView>(R.id.catHeader)
         header(headerView)
         headerView?.text = when (mode) {
-            "kids" -> "🧸 Kids"
-            "anime" -> "Anime"
+            "kids" -> "🧸 Mundo Kids"
+            "anime" -> "🌸 Anime"
             "series" -> "Séries"
             "favorites" -> "♥ Favoritos"
             else -> "Filmes"
@@ -73,6 +73,7 @@ class GridPage(act: MainActivity, id: String, private val mode: String) : Page(a
         }
         empty.setTextColor(Ui.text2)
         cats.showKind = kids || mode == "anime" || mode == "favorites"
+        if (kids || mode == "anime") headerView?.let { mascot(it) }
         catList.layoutManager = LinearLayoutManager(act, if (portrait) RecyclerView.HORIZONTAL else RecyclerView.VERTICAL, false)
         catList.adapter = cats
         catList.itemAnimator = null
@@ -86,6 +87,26 @@ class GridPage(act: MainActivity, id: String, private val mode: String) : Page(a
                 if (span != layout.spanCount) grid.post { layout.spanCount = span }
             }
         }
+    }
+
+    /** Cabeçalho animado: o mascote troca a cada poucos segundos com um pulinho. */
+    private fun mascot(tv: TextView) {
+        val icons = if (kids) listOf("🧸", "🦄", "🚀", "🎈", "🐶", "🌈", "🦖", "🐱") else listOf("🌸", "⛩️", "🐉", "⚔️", "🍥", "🦊", "🗡️")
+        val name = if (kids) "Mundo Kids" else "Anime"
+        var i = 0
+        val tick = object : Runnable {
+            override fun run() {
+                if (tv.isShown) {
+                    i = (i + 1) % icons.size
+                    tv.animate().scaleX(0.8f).scaleY(0.8f).setDuration(120).withEndAction {
+                        tv.text = "${icons[i]} $name"
+                        tv.animate().scaleX(1f).scaleY(1f).setInterpolator(android.view.animation.OvershootInterpolator(3f)).setDuration(280).start()
+                    }.start()
+                }
+                tv.postDelayed(this, 3200)
+            }
+        }
+        tv.postDelayed(tick, 3200)
     }
 
     private fun spanGuess(): Int {

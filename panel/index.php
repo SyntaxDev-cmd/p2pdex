@@ -32,6 +32,30 @@ require __DIR__ . '/inc/header.php';
   <div class="stat"><b><?= $stats['tv'] ?></b><span>TV Box / Smart TV</span></div>
 </div>
 
+<div class="apps">
+  <a class="app-card tv" href="https://github.com/SyntaxDev-cmd/p2pdex/releases/download/teste/NovaTV.apk" target="_blank" rel="noopener">
+    <span class="app-ic">📺</span>
+    <span class="app-tx"><b><?= e(setting('app_name') ?: 'NovaTV') ?></b><small>TV ao vivo, filmes, séries, kids e anime</small></span>
+    <span class="app-dl">⬇ Baixar APK</span>
+  </a>
+  <a class="app-card sp" href="https://github.com/SyntaxDev-cmd/p2pdex/releases/download/sports-teste/NovaSports.apk" target="_blank" rel="noopener">
+    <span class="app-ic">⚽</span>
+    <span class="app-tx"><b><?= e(setting('sports_app_name') ?: 'NovaSports') ?></b><small>Futebol ao vivo, jogos, notícias e tabelas</small></span>
+    <span class="app-dl">⬇ Baixar APK</span>
+  </a>
+</div>
+<style>
+  .apps{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin-bottom:18px}
+  .app-card{display:flex;align-items:center;gap:14px;padding:18px;border-radius:16px;text-decoration:none;color:#fff;border:1px solid #ffffff1f;
+    box-shadow:0 10px 30px #0005;transition:transform .15s,box-shadow .15s}
+  .app-card:hover{transform:translateY(-2px);box-shadow:0 14px 34px #0007}
+  .app-card.tv{background:linear-gradient(120deg,color-mix(in srgb,var(--brand) 70%,#000),#10131c)}
+  .app-card.sp{background:linear-gradient(120deg,#0b6b35,#02160b)}
+  .app-ic{font-size:30px;width:54px;height:54px;border-radius:14px;display:flex;align-items:center;justify-content:center;background:#ffffff1a}
+  .app-tx{flex:1;min-width:0}.app-tx b{display:block;font-size:17px}.app-tx small{color:#ffffffb3}
+  .app-dl{padding:8px 14px;border-radius:99px;background:#fff;color:#111;font-weight:700;font-size:13px;white-space:nowrap}
+</style>
+
 <?php if ($me): ?>
 <div class="card">
   <h2>🤝 Sua revenda</h2>

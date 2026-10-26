@@ -325,7 +325,7 @@ class GamesPage(act: MainActivity, id: String) : Page(act, id) {
             h.channels.text = if (g.channels.isEmpty()) "Canal não informado" else "📺  " + g.channels.joinToString("  •  ")
             val now = System.currentTimeMillis() / 1000
             when (g.liveStatus(now)) {
-                "live" -> badge(h.status, "AO VIVO", Color.parseColor("#FF3B30"))
+                "live" -> badge(h.status, if (g.minute.isNotBlank()) "AO VIVO  ${g.minute}" else "AO VIVO", Color.parseColor("#FF3B30"))
                 "ended" -> badge(h.status, "ENCERRADO", Color.parseColor("#55000000"))
                 "soon" -> {
                     val mins = ((g.ts - now) / 60).toInt()

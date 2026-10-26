@@ -2,8 +2,8 @@ IMAGENS QUE PODEM SER TROCADAS NO APK (APK Editor / MT Manager -> aba "Imagens")
 
 res/drawable-nodpi/app_logo.png        -> logo usada quando o painel não tiver logo
                                           (abertura, login e topo). PNG com fundo transparente.
-res/drawable-nodpi/app_background.png  -> fundo usado quando o painel não tiver imagem de fundo.
-                                          Vem vazio (1x1 transparente = desligado).
+res/drawable-nodpi/app_background.jpg  -> fundo usado quando o painel não tiver imagem de fundo.
+                                          (troque por um arquivo do mesmo nome; 1x1 = desligado).
                                           Troque por uma imagem 1920x1080 para ativar.
 res/mipmap-*/ic_launcher.png           -> ícone do app
 res/drawable-xhdpi/banner.png          -> banner da Android TV (320x180)

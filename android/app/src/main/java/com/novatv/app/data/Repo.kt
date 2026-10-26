@@ -176,7 +176,7 @@ object Repo {
         val kids = p?.kids == true
         return rawCategories(kind).mapNotNull { c ->
             when {
-                kids && (isAdultName(c) || !matches(c.name, config.kidsKeywords)) -> null
+                kids && (isAdultName(c) || !matches(c.name, config.kidsKeywords) || isSportsName(c.name)) -> null
                 isAdult(c) || (p != null && c.key in p.locked) -> c.copy(locked = true)
                 else -> c
             }
@@ -244,12 +244,19 @@ object Repo {
 
     /** Categorias de um tipo que batem com palavras-chave (kids, anime, esportes). */
     suspend fun filtered(kind: Kind, keywords: List<String>): List<Category> =
-        categories(kind).filter { !it.locked && matches(it.name, keywords) }
+        categories(kind).filter { !it.locked && (matches(it.name, keywords) || (keywords === config.sportsKeywords && isSportsName(it.name))) }
 
     /** Categorias para a aba KIDS: canais + filmes + séries, em paralelo. */
-    suspend fun kidsCategories(): List<Category> = mixed(config.kidsKeywords, listOf(Kind.LIVE, Kind.MOVIE, Kind.SERIES))
+    suspend fun kidsCategories(): List<Category> =
+        mixed(config.kidsKeywords, listOf(Kind.LIVE, Kind.MOVIE, Kind.SERIES)).filter { !isSportsName(it.name) && !isAdultName(it) }
 
-    suspend fun animeCategories(): List<Category> = mixed(config.animeKeywords, listOf(Kind.SERIES, Kind.MOVIE))
+    suspend fun animeCategories(): List<Category> =
+        mixed(config.animeKeywords, listOf(Kind.SERIES, Kind.MOVIE)).filter { !isSportsName(it.name) && !isAdultName(it) }
+
+    private val sportsEmoji = listOf("⚽", "🏀", "🏈", "⚾", "🎾", "🏐", "🏉", "🥊", "🏆", "🏎", "🏟", "🥅", "🏒", "⛳")
+
+    /** Categoria de esporte (palavras-chave do painel ou emoji de esporte no nome, ex.: "⚽ DISNEY+ • MAX"). */
+    fun isSportsName(name: String): Boolean = sportsEmoji.any { name.contains(it) } || matches(name, config.sportsKeywords)
 
     private suspend fun mixed(keywords: List<String>, kinds: List<Kind>): List<Category> = coroutineScope {
         val jobs: List<Deferred<List<Category>>> = kinds.map { k ->
