@@ -29,7 +29,7 @@ function req(string $k, int $max = 120): string
 try {
     $s = settings();
     $key = req('key', 64);
-    if ($key === '' || !hash_equals($s['api_key'], $key)) {
+    if ($s['api_key_required'] === '1' && ($key === '' || !hash_equals($s['api_key'], $key))) {
         out(['ok' => false, 'error' => 'invalid_key'], 401);
     }
 

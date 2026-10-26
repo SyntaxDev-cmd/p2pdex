@@ -340,8 +340,7 @@ class LoginActivity : BaseActivity() {
                     acc.expiresAt?.let {
                         Dialogs.toast(this@LoginActivity, "Bem-vindo! Assinatura válida até " + SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(it)))
                     }
-                    startActivity(Intent(this@LoginActivity, MainActivity::class.java))
-                    finish()
+                    ProfilesActivity.route(this@LoginActivity)
                     return@launch
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     throw e

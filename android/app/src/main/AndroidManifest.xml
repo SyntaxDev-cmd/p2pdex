@@ -47,6 +47,9 @@
             android:launchMode="singleTask" />
 
         <activity android:name=".ui.DetailActivity" />
+        <activity android:name=".ui.ProfilesActivity" />
+        <activity android:name=".ui.SettingsActivity" />
+        <activity android:name=".ui.GuideActivity" />
 
         <activity
             android:name=".ui.SearchActivity"

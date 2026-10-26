@@ -105,8 +105,34 @@ object Repo {
 
     // ------------------------------------------------------------ dados
 
-    suspend fun categories(kind: Kind): List<Category> = cached("cats:$kind") {
-        need().categories(kind).map { if (isAdult(it)) it.copy(locked = true) else it }
+    private suspend fun rawCategories(kind: Kind): List<Category> = cached("cats:$kind") { need().categories(kind) }
+
+    /**
+     * Categorias visíveis para o perfil atual:
+     *  - perfil infantil: só categorias infantis (adulto nunca aparece)
+     *  - demais: adulto e categorias bloqueadas pelo perfil pedem PIN
+     */
+    suspend fun categories(kind: Kind): List<Category> {
+        val p = Profiles.current
+        val kids = p?.kids == true
+        return rawCategories(kind).mapNotNull { c ->
+            when {
+                kids && (isAdultName(c) || !matches(c.name, config.kidsKeywords)) -> null
+                isAdult(c) || (p != null && c.key in p.locked) -> c.copy(locked = true)
+                else -> c
+            }
+        }
+    }
+
+    /** Todas as categorias (para a tela de bloqueio por perfil). */
+    suspend fun allCategories(kind: Kind): List<Category> = rawCategories(kind)
+
+    private fun isAdultName(c: Category) = matches(c.name, config.adultKeywords)
+
+    /** Troca de perfil: limpa desbloqueios temporários e índices de busca. */
+    fun onProfileChanged() {
+        synchronized(unlocked) { unlocked.clear() }
+        cache.keys.filter { it.startsWith("idx:") }.forEach { cache.remove(it) }
     }
 
     suspend fun items(kind: Kind, categoryId: String): List<Media> = cached("items:$kind:$categoryId") {
@@ -150,9 +176,11 @@ object Repo {
         jobs.flatMap { it.await() }
     }
 
-    private suspend fun index(kind: Kind): List<Pair<String, Media>> = cached("idx:$kind") {
-        val blocked = categories(kind).filter { it.locked }.map { it.id }.toHashSet()
-        all(kind).filter { it.categoryId !in blocked }.map { normalize(it.name) to it }
+    private suspend fun index(kind: Kind): List<Pair<String, Media>> = cached("idx:$kind:${Profiles.currentId}") {
+        // só entra na busca o que o perfil pode ver sem PIN
+        val allowed = categories(kind).filter { !it.locked }.map { it.id }.toHashSet()
+        all(kind).filter { it.categoryId in allowed || it.categoryId.isEmpty() && Profiles.current?.kids != true }
+            .map { normalize(it.name) to it }
     }
 
     /** Busca em todo o catálogo (sem acento, sem diferenciar maiúsculas). */

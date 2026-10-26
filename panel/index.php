@@ -29,7 +29,7 @@ require __DIR__ . '/inc/header.php';
 
 <div class="card">
   <h2>🔗 Conexão do aplicativo</h2>
-  <p class="hint">Esses dois valores vão no arquivo <span class="mono">android/gradle.properties</span> antes de gerar o APK (ou no GitHub Actions).</p>
+  <p class="hint">O endereço do painel fica no APK em <span class="mono">assets/config.json</span> (<span class="mono">panel_url</span>) — dá para trocar com MT Manager / APK Editor. A chave só é necessária se você ativar "Exigir chave da API" em Sistema.</p>
   <div class="grid g2" style="margin-top:12px">
     <div><label>PANEL_URL</label><div class="result copy" data-copy><?= e(base_url()) ?></div></div>
     <div><label>PANEL_KEY</label><div class="result copy" data-copy><?= e(setting('api_key')) ?></div></div>

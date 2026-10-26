@@ -184,6 +184,7 @@ function default_settings(): array
         'allow_server_select' => '1',
         'register_devices' => '1',
         'api_key' => '',
+        'api_key_required' => '0',
     ];
 }
 

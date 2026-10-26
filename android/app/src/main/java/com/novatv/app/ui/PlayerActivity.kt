@@ -56,8 +56,11 @@ class PlayerActivity : BaseActivity() {
     private var restartFirst = false
     private var playingEntry: PlayQueue.Entry? = null
     private val live: Boolean get() = PlayQueue.current?.kind == Kind.LIVE
-    private val modes = intArrayOf(AspectRatioFrameLayout.RESIZE_MODE_FIT, AspectRatioFrameLayout.RESIZE_MODE_FILL, AspectRatioFrameLayout.RESIZE_MODE_ZOOM)
-    private val modeNames = arrayOf("Original", "Esticar", "Zoom")
+    private val modes = intArrayOf(
+        AspectRatioFrameLayout.RESIZE_MODE_FIT, AspectRatioFrameLayout.RESIZE_MODE_FILL, AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+        AspectRatioFrameLayout.RESIZE_MODE_FIXED_WIDTH, AspectRatioFrameLayout.RESIZE_MODE_FIXED_HEIGHT,
+    )
+    private val modeNames = SettingsActivity.resizeNames
     private val timeFmt = SimpleDateFormat("HH:mm", Locale.getDefault())
 
     private val overlayAdapter = ChannelAdapter(
@@ -78,6 +81,10 @@ class PlayerActivity : BaseActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (PlayQueue.current == null || Repo.provider == null) {
+            finish()
+            return
+        }
+        if (Prefs.playerMode == "external" && openExternal()) {
             finish()
             return
         }
@@ -252,7 +259,7 @@ class PlayerActivity : BaseActivity() {
                 val e = PlayQueue.current!!
                 Prefs.saveResume(key, e.title, e.logo, Long.MAX_VALUE, Long.MAX_VALUE, e.series ?: e.media)
             }
-            if (PlayQueue.index + 1 < PlayQueue.entries.size) countdownNext() else finish()
+            if (Prefs.autoNext && PlayQueue.index + 1 < PlayQueue.entries.size) countdownNext() else finish()
         }
     }
 
@@ -410,6 +417,25 @@ class PlayerActivity : BaseActivity() {
             topRight.alpha = 1f
         } else {
             topRight.animate().alpha(0f).setDuration(250).withEndAction { topRight.visibility = View.GONE }.start()
+        }
+    }
+
+    /** Abre no player externo escolhido pelo usuário (VLC, MX Player...). */
+    private fun openExternal(): Boolean {
+        val e = PlayQueue.current ?: return false
+        val url = e.url()
+        if (url.isEmpty()) return false
+        e.media?.takeIf { it.kind == Kind.LIVE }?.let { Prefs.addRecent(it) }
+        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW)
+            .setDataAndType(android.net.Uri.parse(url), "video/*")
+            .putExtra("title", if (e.subtitle.isNotEmpty() && e.episode != null) "${e.title} • ${e.subtitle}" else e.title)
+            .putExtra("headers", arrayOf("User-Agent", Repo.provider?.server?.userAgent.orEmpty().ifBlank { com.novatv.app.data.Net.DEFAULT_UA }))
+        return try {
+            startActivity(android.content.Intent.createChooser(intent, "Abrir com"))
+            true
+        } catch (ex: Exception) {
+            Dialogs.toast(this, "Nenhum player externo instalado. Usando o player interno.")
+            false
         }
     }
 

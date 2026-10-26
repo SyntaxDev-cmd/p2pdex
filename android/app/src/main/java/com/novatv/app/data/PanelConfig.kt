@@ -34,9 +34,12 @@ class PanelConfig(val json: JSONObject) {
     private val player = json.optJSONObject("player") ?: JSONObject()
 
     val appName: String = app.optString("name").ifBlank { "NovaTV" }
-    val logo: String = app.optString("logo")
-    val background: String = app.optString("background")
-    val backgroundMode: String = app.optString("background_mode", "gradient")
+    // sem imagem no painel, usa as imagens embutidas no APK (assets/images)
+    val logo: String = app.optString("logo").ifBlank { AppConfig.logo }
+    val background: String = app.optString("background").ifBlank { AppConfig.background }
+    val backgroundMode: String =
+        if (app.optString("background").isBlank() && AppConfig.background.isNotEmpty()) "image"
+        else app.optString("background_mode", "gradient")
     val splashText: String = app.optString("splash_text")
     val welcome: String = app.optString("welcome")
     val support: String = app.optString("support")
@@ -126,9 +129,9 @@ class PanelConfig(val json: JSONObject) {
          * Retorna true se veio do servidor (ou 304), false se ficou só no cache.
          */
         suspend fun refresh(): Boolean = withContext(Dispatchers.IO) {
-            if (BuildConfig.PANEL_URL.isBlank()) return@withContext false
-            val url = Uri.parse(BuildConfig.PANEL_URL + "/api/config.php").buildUpon()
-                .appendQueryParameter("key", BuildConfig.PANEL_KEY)
+            if (AppConfig.panelUrl.isBlank()) return@withContext false
+            val url = Uri.parse(AppConfig.panelUrl + "/api/config.php").buildUpon()
+                .appendQueryParameter("key", AppConfig.panelKey)
                 .appendQueryParameter("device_id", Prefs.deviceId)
                 .appendQueryParameter("model", (Build.MANUFACTURER + " " + Build.MODEL).trim().take(80))
                 .appendQueryParameter("platform", if (Ui.isTv) "tv" else "mobile")

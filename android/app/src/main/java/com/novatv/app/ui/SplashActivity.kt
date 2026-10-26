@@ -54,7 +54,7 @@ class SplashActivity : BaseActivity() {
             Ui.apply(PanelConfig.current)
             paint()
             val cfg = PanelConfig.current
-            if (!online && BuildConfig.PANEL_URL.isNotBlank() && Prefs.configJson.isEmpty()) {
+            if (!online && com.novatv.app.data.AppConfig.panelUrl.isNotBlank() && Prefs.configJson.isEmpty()) {
                 Dialogs.show(this@SplashActivity, "Sem conexão", "Não foi possível falar com o servidor. Verifique sua internet.", listOf(
                     Dialogs.Btn("Sair") { finish() },
                     Dialogs.Btn("Tentar de novo", true) { start() },
@@ -96,8 +96,7 @@ class SplashActivity : BaseActivity() {
                     goLogin(null)
                     return@launch
                 }
-                startActivity(Intent(this@SplashActivity, MainActivity::class.java))
-                finish()
+                ProfilesActivity.route(this@SplashActivity)
             } catch (e: AuthException) {
                 goLogin(e.message)
             } catch (e: kotlinx.coroutines.CancellationException) {

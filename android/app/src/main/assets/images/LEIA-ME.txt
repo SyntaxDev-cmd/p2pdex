@@ -1,0 +1,10 @@
+IMAGENS QUE PODEM SER TROCADAS NO APK (MT Manager / APK Editor)
+
+logo.png        -> logo usada quando o painel não tiver logo (abertura, login e topo)
+background.jpg  -> (opcional) coloque um arquivo com este nome para usar como fundo
+                   quando o painel não tiver imagem de fundo. Recomendado 1920x1080.
+
+Ícone do app: res/mipmap-*/ic_launcher.png
+Banner da Android TV: res/drawable-xhdpi/banner.png (320x180)
+
+O link do painel fica em assets/config.json ("panel_url").

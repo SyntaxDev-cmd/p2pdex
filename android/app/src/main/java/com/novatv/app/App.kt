@@ -5,6 +5,7 @@ import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
+import com.novatv.app.data.AppConfig
 import com.novatv.app.data.Net
 import com.novatv.app.data.Prefs
 import com.novatv.app.ui.Ui
@@ -15,6 +16,7 @@ class App : Application(), ImageLoaderFactory {
         super.onCreate()
         instance = this
         Prefs.init(this)
+        AppConfig.load(this)
         Net.init(this)
         Ui.loadCachedTheme()
     }

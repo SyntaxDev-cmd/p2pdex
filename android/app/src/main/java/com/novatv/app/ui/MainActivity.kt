@@ -24,6 +24,7 @@ import com.novatv.app.data.Kind
 import com.novatv.app.data.Media
 import com.novatv.app.data.PanelConfig
 import com.novatv.app.data.Prefs
+import com.novatv.app.data.Profiles
 import com.novatv.app.data.Repo
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -72,7 +73,8 @@ class MainActivity : BaseActivity() {
         hideEmptyOptionalTabs()
 
         val cfg = PanelConfig.current
-        val start = savedInstanceState?.getString("tab") ?: cfg.startTab
+        val start = savedInstanceState?.getString("tab")
+            ?: if (Profiles.current?.kids == true && tabViews.containsKey("kids")) "kids" else cfg.startTab
         switchTab(if (tabViews.containsKey(start)) start else tabViews.keys.firstOrNull() ?: "tv", focusTab = true)
         showPopups()
     }
@@ -98,7 +100,7 @@ class MainActivity : BaseActivity() {
             logo.setImageResource(R.mipmap.ic_launcher)
         }
         clock.setTextColor(Ui.text)
-        val icons = listOf(R.id.btnSearch, R.id.btnRefresh, R.id.btnBell, R.id.btnAccount)
+        val icons = listOf(R.id.btnSearch, R.id.btnRefresh, R.id.btnBell)
         icons.forEach { id ->
             val v = findViewById<ImageView>(id)
             v.background = Ui.iconButton(this)
@@ -108,7 +110,18 @@ class MainActivity : BaseActivity() {
         findViewById<View>(R.id.btnSearch).setOnClickListener { openSearch() }
         findViewById<View>(R.id.btnRefresh).setOnClickListener { refreshAll() }
         findViewById<View>(R.id.btnBell).setOnClickListener { showMessages() }
-        findViewById<View>(R.id.btnAccount).setOnClickListener { showAccount() }
+        findViewById<TextView>(R.id.btnAccount).apply {
+            val prof = Profiles.current
+            if (prof != null) {
+                text = prof.emoji
+                background = Avatar.drawable(this@MainActivity, prof, radiusDp = 10, focusRing = true)
+            } else {
+                text = "👤"
+                background = Ui.iconButton(this@MainActivity)
+            }
+            Ui.focusZoom(this, 1.12f)
+            setOnClickListener { showAccount() }
+        }
         bellDot.background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Ui.primary) }
         updateBell()
     }
@@ -128,7 +141,8 @@ class MainActivity : BaseActivity() {
     private fun buildTabs() {
         tabsBox.removeAllViews()
         tabViews.clear()
-        PanelConfig.current.tabs.forEach { t ->
+        val kidsProfile = Profiles.current?.kids == true
+        PanelConfig.current.tabs.filter { !(kidsProfile && it.id == "sports") }.forEach { t ->
             val tv = TextView(this).apply {
                 text = t.label
                 textSize = 17f
@@ -384,6 +398,37 @@ class MainActivity : BaseActivity() {
     }
 
     private fun showAccount() {
+        val profile = Profiles.current
+        val options = listOf(
+            "Trocar perfil",
+            "Configurações e player",
+            "Controle parental",
+            "Minha assinatura",
+            "Sair da conta",
+        )
+        Dialogs.choose(this, profile?.let { "${it.emoji}  ${it.name}" } ?: "Conta", options) { i ->
+            when (i) {
+                0 -> startActivity(Intent(this, ProfilesActivity::class.java))
+                1 -> startActivity(Intent(this, SettingsActivity::class.java))
+                2 -> {
+                    Dialogs.pin(this, "Controle parental", message = "Digite o PIN para alterar os bloqueios.") {
+                        startActivity(Intent(this, SettingsActivity::class.java).putExtra("section", "parental"))
+                    }
+                }
+                3 -> showSubscription()
+                4 -> Dialogs.show(this, "Sair", "Deseja sair desta conta neste aparelho?", listOf(
+                    Dialogs.Btn("Cancelar"),
+                    Dialogs.Btn("Sair", true) {
+                        Repo.logout()
+                        startActivity(Intent(this, LoginActivity::class.java))
+                        finish()
+                    },
+                ))
+            }
+        }
+    }
+
+    private fun showSubscription() {
         val acc = Repo.account
         val p = Repo.provider
         val fmt = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
@@ -399,37 +444,6 @@ class MainActivity : BaseActivity() {
             val support = PanelConfig.current.support
             if (support.isNotBlank()) append("\n").append(support)
         }
-        Dialogs.show(this, "Minha conta", info, listOf(
-            Dialogs.Btn("Trocar PIN") { changePin() },
-            Dialogs.Btn("Sair da conta") {
-                Dialogs.show(this, "Sair", "Deseja sair desta conta?", listOf(
-                    Dialogs.Btn("Cancelar"),
-                    Dialogs.Btn("Sair", true) {
-                        Repo.logout()
-                        startActivity(Intent(this, LoginActivity::class.java))
-                        finish()
-                    },
-                ))
-            },
-            Dialogs.Btn("Fechar", true),
-        ))
-    }
-
-    private fun changePin() {
-        Dialogs.pin(this, "Digite o PIN atual") {
-            val field = Dialogs.input(this, "Novo PIN (4 a 8 números)", numeric = true, password = true, max = 8)
-            Dialogs.show(this, "Novo PIN", content = field, buttons = listOf(
-                Dialogs.Btn("Cancelar"),
-                Dialogs.Btn("Salvar", true) {
-                    val pin = field.text.toString()
-                    if (pin.length >= 4) {
-                        Prefs.customPin = pin
-                        Dialogs.toast(this, "PIN alterado")
-                    } else {
-                        Dialogs.toast(this, "O PIN precisa de 4 a 8 números")
-                    }
-                },
-            ), onShow = { field.requestFocus() })
-        }
+        Dialogs.show(this, "Minha assinatura", info)
     }
 }

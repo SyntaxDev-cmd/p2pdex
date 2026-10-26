@@ -277,7 +277,7 @@ class XtreamProvider(
     override fun streamUrl(m: Media): String {
         if (m.directUrl.isNotEmpty()) return m.directUrl
         return when (m.kind) {
-            Kind.LIVE -> build("live", m.id, server.output.ifBlank { "ts" })
+            Kind.LIVE -> build("live", m.id, Prefs.liveFormat.ifEmpty { server.output.ifBlank { "ts" } })
             Kind.MOVIE -> build("movie", m.id, m.ext.ifBlank { "mp4" })
             Kind.SERIES -> build("series", m.id, m.ext.ifBlank { "mp4" })
         }

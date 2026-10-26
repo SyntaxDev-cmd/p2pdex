@@ -28,7 +28,7 @@ object Players {
     @OptIn(UnstableApi::class)
     fun create(ctx: Context, preview: Boolean = false): ExoPlayer {
         val ua = Repo.provider?.server?.userAgent.orEmpty().ifBlank { Net.DEFAULT_UA }
-        val (minB, maxB, play, rebuf) = when (PanelConfig.current.buffer) {
+        val (minB, maxB, play, rebuf) = when (com.novatv.app.data.Prefs.bufferMode.ifEmpty { PanelConfig.current.buffer }) {
             "low" -> listOf(6_000, 25_000, 800, 1_500)
             "high" -> listOf(30_000, 90_000, 2_500, 5_000)
             else -> listOf(15_000, 50_000, 1_200, 2_500)

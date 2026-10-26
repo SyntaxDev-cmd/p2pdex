@@ -28,6 +28,9 @@ object Prefs {
     private fun str(k: String, d: String = "") = sp.getString(k, d) ?: d
     private fun put(k: String, v: String) = sp.edit().putString(k, v).apply()
 
+    fun getRaw(k: String): String = str(k)
+    fun putRaw(k: String, v: String) = put(k, v)
+
     var deviceId: String
         get() = str("device_id")
         set(v) = put("device_id", v)
@@ -98,7 +101,12 @@ object Prefs {
         put(key, arr.toString())
     }
 
-    private fun scoped(k: String) = "${k}_${serverId}_$username"
+    /** Dados separados por conta e por perfil. */
+    private fun scoped(k: String) = "${k}_${serverId}_${username}_${Profiles.currentId}"
+
+    fun clearHistory() {
+        sp.edit().remove(scoped("resume")).remove(scoped("recent")).apply()
+    }
 
     fun favorites(kind: Kind? = null): List<Media> =
         loadList(scoped("fav")).filter { kind == null || it.kind == kind }
@@ -155,8 +163,23 @@ object Prefs {
         }.sortedByDescending { it.second }.map { it.first }.toList()
     }
 
-    // ---- Player
+    // ---- Player (escolhas do usuário)
     var resizeMode: Int
         get() = sp.getInt("resize", 0)
         set(v) = sp.edit().putInt("resize", v).apply()
+    /** "internal" ou "external" (VLC, MX Player...). */
+    var playerMode: String
+        get() = str("player_mode", "internal")
+        set(v) = put("player_mode", v)
+    /** "" = o que o painel definir, "ts" ou "m3u8". */
+    var liveFormat: String
+        get() = str("live_format")
+        set(v) = put("live_format", v)
+    /** "" = do painel, "low", "normal", "high". */
+    var bufferMode: String
+        get() = str("buffer_mode")
+        set(v) = put("buffer_mode", v)
+    var autoNext: Boolean
+        get() = sp.getBoolean("auto_next", true)
+        set(v) = sp.edit().putBoolean("auto_next", v).apply()
 }

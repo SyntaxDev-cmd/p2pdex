@@ -152,11 +152,11 @@ object Dialogs {
         }
 
     /** Pede o PIN parental. */
-    fun pin(act: Activity, title: String = "PIN de controle parental", onOk: () -> Unit) {
+    fun pin(act: Activity, title: String = "PIN de controle parental", expected: String? = null, message: String = "Conteúdo protegido.", onOk: () -> Unit) {
         val field = input(act, "Digite o PIN", numeric = true, password = true, max = 8).apply { gravity = Gravity.CENTER }
         var dialog: Dialog? = null
         val check = {
-            if (field.text.toString() == PanelConfig.current.pin) {
+            if (field.text.toString() == (expected ?: PanelConfig.current.pin)) {
                 dialog?.dismiss()
                 onOk()
             } else {
@@ -167,7 +167,7 @@ object Dialogs {
         field.setOnEditorActionListener { _, id, ev ->
             if (id == EditorInfo.IME_ACTION_DONE || ev?.keyCode == KeyEvent.KEYCODE_ENTER) { check(); true } else false
         }
-        dialog = show(act, title, "Conteúdo protegido.", content = field, buttons = listOf(
+        dialog = show(act, title, message, content = field, buttons = listOf(
             Btn("Cancelar"),
         ), onShow = { field.requestFocus() })
         // botão confirmar não fecha antes de validar
