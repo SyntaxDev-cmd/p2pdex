@@ -271,7 +271,7 @@ function default_settings(): array
         // Jogos do dia
         'games_enabled' => '1',
         'games_api_url' => 'https://xsender.painelmaster.lol/retornojogosmx.json',
-        'games_cache_minutes' => '10',
+        'games_cache_minutes' => '3',
         'games_map' => '',
         // TMDB
         'tmdb_enabled' => '1',
@@ -287,7 +287,7 @@ function default_settings(): array
         'latest_version_code' => '1',
         'update_url' => '',
         'force_update' => '0',
-        'allow_server_select' => '1',
+        'allow_server_select' => '0',
         'register_devices' => '1',
         'api_key' => '',
         'api_key_required' => '0',

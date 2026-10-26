@@ -36,9 +36,13 @@ object Games {
     suspend fun load(force: Boolean = false): List<Game> = withContext(Dispatchers.IO) {
         val cfg = PanelConfig.current
         if (!cfg.gamesEnabled || cfg.gamesUrl.isBlank()) return@withContext emptyList()
-        cache?.let { if (!force && System.currentTimeMillis() - it.first < 3 * 60_000) return@withContext it.second }
-        val list = Net.execute(Net.api, Net.request(cfg.gamesUrl)).use { resp ->
+        cache?.let { if (!force && System.currentTimeMillis() - it.first < 90_000) return@withContext it.second }
+        val url = cfg.gamesUrl + (if ('?' in cfg.gamesUrl) "&" else "?") + "t=" + System.currentTimeMillis() / 60_000
+        val list = Net.execute(Net.api, Net.request(url)).use { resp ->
+            if (!resp.isSuccessful) throw java.io.IOException("HTTP ${resp.code}")
             val o = JSONObject(resp.body?.string().orEmpty())
+            // painel fora ou API de jogos com erro: mantém a última lista boa
+            if (!o.optBoolean("ok", true) && cache != null) return@use cache!!.second
             val arr = o.optJSONArray("games") ?: return@use emptyList<Game>()
             (0 until arr.length()).mapNotNull { i ->
                 val g = arr.optJSONObject(i) ?: return@mapNotNull null
@@ -60,8 +64,14 @@ object Games {
             }
         }
         cache = System.currentTimeMillis() to list
+        updatedAt = System.currentTimeMillis()
         list
     }
+
+    /** Quando a lista foi atualizada pela última vez (0 = nunca). */
+    @Volatile
+    var updatedAt: Long = 0
+        private set
 
     private val noise = Regex("\\b(fhd|uhd|hd|sd|4k|h265|hevc|alt|backup|br|ppv|24h|24hs|tv)\\b")
 

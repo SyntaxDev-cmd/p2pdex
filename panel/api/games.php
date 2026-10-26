@@ -6,7 +6,7 @@ require dirname(__DIR__) . '/inc/games.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('X-Content-Type-Options: nosniff');
-header('Cache-Control: public, max-age=120');
+header('Cache-Control: public, max-age=60');
 
 try {
     if (api_rate_limited((int)setting('api_rate_limit', '120'))) {

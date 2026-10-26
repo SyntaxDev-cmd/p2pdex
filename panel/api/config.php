@@ -134,7 +134,7 @@ try {
             'reseller' => $reseller ? $reseller['name'] : '',
             'ask_reseller_code' => $s['ask_reseller_code'] === '1' || $s['require_reseller_code'] === '1',
             'start_tab' => $s['start_tab'],
-            'allow_server_select' => $s['allow_server_select'] === '1',
+            'allow_server_select' => false,
             'home_mosaic' => ($s['home_mosaic'] ?? '1') === '1',
         ],
         'theme' => [

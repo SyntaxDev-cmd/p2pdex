@@ -1,6 +1,13 @@
 package com.novatv.app.data
 
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
@@ -32,21 +39,61 @@ object Repo {
     suspend fun login(server: ServerDef, user: String, pass: String): Account {
         val p = create(server, user, pass)
         val acc = p.login()
+        adopt(server, p, acc, user, pass)
+        return acc
+    }
+
+    private fun adopt(server: ServerDef, p: Provider, acc: Account, user: String, pass: String) {
         provider = p
         account = acc
         clear()
         Prefs.serverId = server.id
+        Prefs.activeBase = p.activeBase
         Prefs.username = user
         Prefs.password = pass
-        return acc
     }
 
-    /** Login automático com os dados salvos. */
+    /**
+     * Seleção automática de servidor: testa todos os servidores ativos do painel ao mesmo
+     * tempo (DNS, P2P e M3U) e entra no primeiro que aceitar o usuário e a senha.
+     * O servidor usado da última vez é testado junto, então quem já entrou volta rápido.
+     */
+    suspend fun loginAuto(user: String, pass: String): Account = withContext(Dispatchers.IO) {
+        val list = servers().sortedByDescending { it.id == Prefs.serverId }
+        if (list.isEmpty()) throw NoServerException()
+        if (list.size == 1) return@withContext login(list[0], user, pass)
+        val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+        val winner = CompletableDeferred<Triple<ServerDef, Provider, Account>>()
+        val errors = mutableListOf<Exception>()
+        val jobs = list.map { s ->
+            scope.launch {
+                try {
+                    val p = create(s, user, pass)
+                    val acc = p.login()
+                    winner.complete(Triple(s, p, acc))
+                } catch (e: Exception) {
+                    synchronized(errors) {
+                        errors.add(e)
+                        if (errors.size == list.size) winner.completeExceptionally(XtreamProvider.bestError(errors))
+                    }
+                }
+            }
+        }
+        try {
+            val (s, p, acc) = winner.await()
+            adopt(s, p, acc, user, pass)
+            acc
+        } finally {
+            jobs.forEach { it.cancel() }
+            scope.cancel()
+        }
+    }
+
+    /** Login automático com os dados salvos (em qualquer servidor ativo do painel). */
     suspend fun restore(): Account? {
         if (!Prefs.loggedIn) return null
-        val servers = servers()
-        val server = servers.firstOrNull { it.id == Prefs.serverId } ?: servers.firstOrNull() ?: return null
-        return login(server, Prefs.username, Prefs.password)
+        if (servers().isEmpty()) return null
+        return loginAuto(Prefs.username, Prefs.password)
     }
 
     fun logout() {

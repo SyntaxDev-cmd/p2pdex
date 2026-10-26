@@ -2,7 +2,7 @@ name: Gerar APK
 
 on:
   push:
-    branches: [main]
+    branches: [main, "claude/**"]
     paths: ["android/**", ".github/workflows/build-apk.yml"]
   workflow_dispatch:
     inputs:

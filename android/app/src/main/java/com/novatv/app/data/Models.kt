@@ -100,3 +100,6 @@ data class Account(
 )
 
 class AuthException(message: String) : Exception(message)
+
+/** O painel não mandou nenhum servidor ativo para este aparelho. */
+class NoServerException : java.io.IOException("Nenhum servidor disponível no momento. Fale com o suporte.")

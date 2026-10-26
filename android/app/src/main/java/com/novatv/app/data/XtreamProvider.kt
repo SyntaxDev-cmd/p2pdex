@@ -51,31 +51,63 @@ class XtreamProvider(
     savedBase: String = "",
 ) : Provider {
 
-    private val apiUser = user + server.userSuffix
+    /** DNS do painel limpas (aceita colado com /player_api.php, barra no fim ou espaços). */
+    private val urls: List<String> = server.urls.map { cleanBase(it) }.filter { it.isNotEmpty() }.distinct()
+
+    /**
+     * Usuário enviado à API. Com "API Email" (sufixo @dominio) o sufixo é somado ao que o
+     * cliente digitou, a não ser que ele já tenha digitado o e-mail completo.
+     */
+    @Volatile
+    private var apiUser: String = loginUsers().first()
     override val username: String get() = user
 
+    /** Alguns servidores P2P só aceitam a API por POST: detectado no login. */
     @Volatile
-    private var base: String = savedBase.takeIf { it in server.urls } ?: server.urls.firstOrNull().orEmpty()
+    private var usePost = false
+
+    @Volatile
+    private var base: String = cleanBase(savedBase).takeIf { it in urls } ?: urls.firstOrNull().orEmpty()
     override val activeBase: String get() = base
 
-    private fun apiUrl(b: String, action: String, extra: Map<String, String>): String {
+    private fun loginUsers(): List<String> {
+        val u = user.trim()
+        val suffix = server.userSuffix.trim()
+        if (suffix.isEmpty() || u.contains('@')) return listOf(u)
+        // tenta com o sufixo e, se recusar, como o cliente digitou
+        return listOf(u + suffix, u)
+    }
+
+    private fun apiUrl(b: String, action: String, extra: Map<String, String>, u: String = apiUser): String {
         val ub = Uri.parse("$b/player_api.php").buildUpon()
-            .appendQueryParameter("username", apiUser)
+            .appendQueryParameter("username", u)
             .appendQueryParameter("password", pass)
         if (action.isNotEmpty()) ub.appendQueryParameter("action", action)
         extra.forEach { (k, v) -> ub.appendQueryParameter(k, v) }
         return ub.build().toString()
     }
 
+    private fun apiRequest(b: String, action: String, extra: Map<String, String>, u: String = apiUser, post: Boolean = usePost): okhttp3.Request {
+        if (!post) return Net.request(apiUrl(b, action, extra, u), server.userAgent)
+        val form = okhttp3.FormBody.Builder()
+            .add("username", u)
+            .add("password", pass)
+            .apply {
+                if (action.isNotEmpty()) add("action", action)
+                extra.forEach { (k, v) -> add(k, v) }
+            }.build()
+        return Net.request("$b/player_api.php", server.userAgent).newBuilder().post(form).build()
+    }
+
     /** Chama a API na DNS ativa; se falhar, tenta as outras e memoriza a que funcionou. */
     private suspend fun <T> call(action: String, extra: Map<String, String> = emptyMap(), parse: (InputStream) -> T): T =
         withContext(Dispatchers.IO) {
-            val order = (listOf(base) + server.urls).filter { it.isNotEmpty() }.distinct()
+            val order = (listOf(base) + urls).filter { it.isNotEmpty() }.distinct()
             if (order.isEmpty()) throw IOException("Nenhuma DNS configurada")
             var last: Exception? = null
             for (b in order) {
                 try {
-                    val result = Net.execute(Net.api, Net.request(apiUrl(b, action, extra), server.userAgent)).use { resp ->
+                    val result = Net.execute(Net.api, apiRequest(b, action, extra)).use { resp ->
                         if (resp.code == 401 || resp.code == 403) throw AuthException("Acesso negado pelo servidor (${resp.code})")
                         if (!resp.isSuccessful) throw IOException("HTTP ${resp.code}")
                         val body = resp.body ?: throw IOException("Resposta vazia")
@@ -97,54 +129,102 @@ class XtreamProvider(
             throw last ?: IOException("Servidor indisponível")
         }
 
-    private fun parseLogin(input: InputStream): Account {
-        val o = JSONObject(input.bufferedReader().readText())
-        val ui = o.optJSONObject("user_info") ?: throw IOException("Resposta não é Xtream")
-        if (ui.optString("auth") != "1" && ui.optInt("auth", 0) != 1) throw AuthException("Usuário ou senha inválidos")
-        val status = ui.optString("status")
+    /** A DNS respondeu, mas não com a API Xtream (página HTML, 404...). */
+    private class NotXtreamException(msg: String) : IOException(msg)
+
+    private fun parseLogin(text: String): Account {
+        val o = try {
+            JSONObject(text.trim().removePrefix("﻿"))
+        } catch (e: org.json.JSONException) {
+            throw NotXtreamException("Resposta não é Xtream")
+        }
+        val ui = o.optJSONObject("user_info") ?: run {
+            // alguns P2P respondem só {"auth":0} ou {"error": "..."} quando o login é recusado
+            if (o.has("auth") || o.has("error") || o.has("message")) throw AuthException("Usuário ou senha inválidos")
+            throw NotXtreamException("Resposta não é Xtream")
+        }
+        val status = ui.optString("status").trim()
+        val auth = ui.opt("auth")
+        val authOk = when (auth) {
+            null, JSONObject.NULL -> status.equals("active", true) || ui.optString("username").isNotEmpty()
+            is Boolean -> auth
+            is Number -> auth.toInt() == 1
+            else -> auth.toString().trim().let { it == "1" || it.equals("true", true) }
+        }
+        if (!authOk) throw AuthException("Usuário ou senha inválidos")
         if (status.equals("Expired", true)) throw AuthException("Assinatura expirada. Renove para continuar.")
         if (status.equals("Banned", true) || status.equals("Disabled", true)) throw AuthException("Conta desativada. Fale com o suporte.")
-        val exp = ui.optString("exp_date").toLongOrNull()?.takeIf { it > 0 }?.times(1000)
+        val exp = ui.optString("exp_date").toDoubleOrNull()?.toLong()?.takeIf { it > 0 }?.times(1000)
         return Account(status.ifEmpty { "Active" }, exp, ui.optString("max_connections"), ui.optString("active_cons"), ui.optString("is_trial") == "1")
     }
 
-    override suspend fun login(): Account {
-        val urls = server.urls.filter { it.isNotEmpty() }
-        if (urls.isEmpty()) throw IOException("Nenhuma DNS configurada")
-        if (urls.size == 1) {
-            return call("", parse = ::parseLogin).also { Prefs.activeBase = base }
+    private suspend fun fetchLogin(b: String, u: String, post: Boolean): Account {
+        val text = Net.execute(Net.api, apiRequest(b, "", emptyMap(), u, post)).use { resp ->
+            when {
+                resp.code == 401 -> throw AuthException("Usuário ou senha inválidos")
+                resp.code == 404 || resp.code == 405 -> throw NotXtreamException("HTTP ${resp.code}")
+                !resp.isSuccessful -> throw IOException("HTTP ${resp.code}")
+            }
+            resp.body?.string().orEmpty()
         }
-        // corrida: todas as DNS ao mesmo tempo, vence a primeira que autenticar
+        return parseLogin(text)
+    }
+
+    /** Tenta GET e, se a DNS não entender, POST. Retorna (conta, usou POST). */
+    private suspend fun attempt(b: String, u: String): Pair<Account, Boolean> =
+        try {
+            fetchLogin(b, u, false) to false
+        } catch (e: NotXtreamException) {
+            fetchLogin(b, u, true) to true
+        }
+
+    /** Todas as DNS ao mesmo tempo: vence a primeira que autenticar. */
+    private suspend fun race(u: String): Triple<String, Account, Boolean> = withContext(Dispatchers.IO) {
+        if (urls.size == 1) {
+            val (acc, post) = attempt(urls[0], u)
+            return@withContext Triple(urls[0], acc, post)
+        }
         val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-        val winner = CompletableDeferred<Pair<String, Account>>()
+        val winner = CompletableDeferred<Triple<String, Account, Boolean>>()
         val errors = mutableListOf<Exception>()
         val jobs: List<Job> = urls.map { b ->
             scope.launch {
                 try {
-                    val acc = Net.execute(Net.api, Net.request(apiUrl(b, "", emptyMap()), server.userAgent)).use { resp ->
-                        if (!resp.isSuccessful) throw IOException("HTTP ${resp.code}")
-                        parseLogin(resp.body!!.byteStream())
-                    }
-                    winner.complete(b to acc)
+                    val (acc, post) = attempt(b, u)
+                    winner.complete(Triple(b, acc, post))
                 } catch (e: Exception) {
                     synchronized(errors) {
                         errors.add(e)
-                        if (errors.size == urls.size) {
-                            winner.completeExceptionally(errors.firstOrNull { it is AuthException } ?: errors.last())
-                        }
+                        if (errors.size == urls.size) winner.completeExceptionally(bestError(errors))
                     }
                 }
             }
         }
         try {
-            val (b, acc) = winner.await()
-            base = b
-            Prefs.activeBase = b
-            return acc
+            winner.await()
         } finally {
             jobs.forEach { it.cancel() }
             scope.cancel()
         }
+    }
+
+    override suspend fun login(): Account {
+        if (urls.isEmpty()) throw IOException("Nenhuma DNS configurada")
+        var lastAuth: AuthException? = null
+        for (u in loginUsers()) {
+            try {
+                val (b, acc, post) = race(u)
+                base = b
+                apiUser = u
+                usePost = post
+                Prefs.activeBase = b
+                return acc
+            } catch (e: AuthException) {
+                // senha errada com o sufixo: tenta o usuário como foi digitado
+                if (lastAuth == null || e.message != "Usuário ou senha inválidos") lastAuth = e
+            }
+        }
+        throw lastAuth ?: AuthException("Usuário ou senha inválidos")
     }
 
     private fun kindAction(kind: Kind, cats: Boolean) = when (kind) {
@@ -251,8 +331,10 @@ class XtreamProvider(
     }
 
     /** EPG XMLTV próprio definido no painel (opcional). */
-    private val xmltv: XmlTvEpg? = server.epgUrl.takeIf { it.isNotBlank() }?.let {
-        XmlTvEpg.of(it.replace("{username}", Uri.encode(apiUser)).replace("{password}", Uri.encode(pass)), server.userAgent)
+    private val xmltv: XmlTvEpg? by lazy {
+        server.epgUrl.takeIf { it.isNotBlank() }?.let {
+            XmlTvEpg.of(it.replace("{username}", Uri.encode(apiUser)).replace("{password}", Uri.encode(pass)), server.userAgent)
+        }
     }
 
     private fun parseListings(input: InputStream): List<EpgItem> {
@@ -328,14 +410,31 @@ class XtreamProvider(
         e.directUrl.ifEmpty { build("series", e.id, e.ext.ifBlank { "mp4" }) }
 
     override fun failover(): Boolean {
-        if (server.streamBase.isNotEmpty() || server.urls.size < 2) return false
-        val i = server.urls.indexOf(base)
-        base = server.urls[(i + 1).mod(server.urls.size)]
+        if (server.streamBase.isNotEmpty() || urls.size < 2) return false
+        val i = urls.indexOf(base)
+        base = urls[(i + 1).mod(urls.size)]
         Prefs.activeBase = base
         return true
     }
 
     companion object {
+        /** "http://dns.com:80/player_api.php?x" -> "http://dns.com:80" */
+        fun cleanBase(raw: String): String {
+            var u = raw.trim().substringBefore('?').substringBefore('#').trimEnd('/')
+            if (u.isEmpty()) return ""
+            if (!u.contains("://")) u = "http://$u"
+            for (tail in listOf("/player_api.php", "/get.php", "/panel_api.php", "/xmltv.php")) {
+                if (u.endsWith(tail, true)) u = u.dropLast(tail.length)
+            }
+            return u.trimEnd('/')
+        }
+
+        /** Entre vários erros de login, o mais útil para mostrar ao cliente. */
+        fun bestError(errors: List<Exception>): Exception {
+            val auth = errors.filterIsInstance<AuthException>()
+            return auth.firstOrNull { it.message != "Usuário ou senha inválidos" } ?: auth.firstOrNull() ?: errors.last()
+        }
+
         fun b64(s: String): String {
             if (s.isEmpty()) return ""
             return try {

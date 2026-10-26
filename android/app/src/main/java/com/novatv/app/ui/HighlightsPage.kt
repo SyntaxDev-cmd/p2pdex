@@ -30,6 +30,8 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+import com.novatv.app.data.AuthException
 import java.util.Calendar
 
 /** Aba DESTAQUES: a tela inicial com mosaico, atalhos e fileiras de filmes, séries e canais. */
@@ -120,60 +122,207 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
         rowAdapters.clear()
         hero = null
         firstFocusable = null
-        loading.visibility = View.VISIBLE
+        resumeRow = null
+        heroFeatures.clear()
+        heroIndex = 0
+        rotate = null
+        loading.visibility = View.GONE
+        val skeleton = skeleton()
+        column.addView(skeleton)
         job = act.launch {
-            try {
-                // categorias que viram fileiras (prioriza lançamentos/cinema)
-                val catsByKind = kinds().associateWith { k -> runCatching { pick(Repo.categories(k), if (kind == null) 3 else 6) }.getOrDefault(emptyList()) }
-                val rows = catsByKind.values.flatten().let { if (kind == null) interleave(it) else it }
-                val rowItems = coroutineScope {
-                    rows.map { c -> c to async { runCatching { Repo.items(c) }.getOrDefault(emptyList()) } }
-                        .map { (c, d) -> c to d.await().sortedByDescending { it.added } }
+            var error: Exception? = null
+            fun keep(e: Throwable) {
+                // só repassa o cancelamento se a própria tela foi cancelada (troca de aba, recarregar)
+                if (e is kotlinx.coroutines.CancellationException && !isActive) throw e
+                if (error == null && e is Exception) error = e
+            }
+            // 1) categorias e fileiras, com tempo máximo: nada de ficar carregando para sempre
+            val rowItems = try {
+                val catsByKind = coroutineScope {
+                    kinds().map { k ->
+                        async {
+                            try {
+                                withTimeoutOrNull(STEP_TIMEOUT) { pick(Repo.categories(k), if (kind == null) 3 else 6) } ?: emptyList()
+                            } catch (e: Exception) {
+                                keep(e); emptyList<Category>()
+                            }
+                        }
+                    }.map { it.await() }
                 }
-                val trending = if (Tmdb.enabled) coroutineScope {
-                    kinds().map { k -> async { runCatching { Tmdb.trendingInCatalog(k == Kind.SERIES) }.getOrDefault(emptyList()) } }.flatMap { it.await() }
-                } else emptyList()
-
-                // ---- mosaico
-                if (PanelConfig.current.homeMosaic) {
-                    val features = buildFeatures(trending, rowItems)
-                    if (features.isNotEmpty()) column.addView(mosaic(features))
-                }
-                loading.visibility = View.GONE
-
-                // ---- fileiras
-                val resume = addRow("Continuar assistindo", resumeItems(), Kind.MOVIE)
-                resumeRow = resume
-                if (resume.second.itemCount == 0) resume.first.visibility = View.GONE
-                if (trending.isNotEmpty()) {
-                    addRow(if (kind == Kind.SERIES) "Séries em alta" else if (kind == Kind.MOVIE) "Filmes em alta" else "Em alta esta semana",
-                        trending.map { (t, m) -> PosterItem(m.name, t.poster.ifEmpty { m.icon }, m.kind, rating = t.rating, media = m) }, Kind.MOVIE)
-                }
-                val favs = Prefs.favorites().filter { it.kind != Kind.LIVE && (kind == null || it.kind == kind) }.map { PosterAdapter.from(it) }
-                if (favs.isNotEmpty()) addRow("Meus favoritos", favs, Kind.MOVIE)
-                if (kind == null) {
-                    val favLive = Prefs.favorites(Kind.LIVE).map { PosterAdapter.from(it) }
-                    if (favLive.isNotEmpty()) addRow("Canais favoritos", favLive, Kind.LIVE)
-                }
-                for ((c, items) in rowItems) {
-                    if (items.isEmpty()) continue
-                    addRow(c.name, items.take(30).map { PosterAdapter.from(it) }, c.kind, c)
+                val rows = catsByKind.flatten().let { if (kind == null) interleave(it) else it }
+                coroutineScope {
+                    rows.map { c ->
+                        c to async {
+                            try {
+                                withTimeoutOrNull(STEP_TIMEOUT) { Repo.items(c) } ?: emptyList()
+                            } catch (e: Exception) {
+                                keep(e); emptyList<Media>()
+                            }
+                        }
+                    }.map { (c, d) -> c to d.await().sortedByDescending { it.added } }
                 }
             } catch (e: Exception) {
-                if (e is kotlinx.coroutines.CancellationException) throw e
-                act.handleError(e)
+                keep(e); emptyList<Pair<Category, List<Media>>>()
             }
-            loading.visibility = View.GONE
+
+            // 2) mostra já: mosaico com o que chegou + fileiras
+            column.removeView(skeleton)
+            if (PanelConfig.current.homeMosaic) {
+                val features = baseFeatures(rowItems)
+                if (features.isNotEmpty()) column.addView(mosaic(features))
+            }
+            val resume = addRow("Continuar assistindo", resumeItems(), Kind.MOVIE)
+            resumeRow = resume
+            if (resume.second.itemCount == 0) resume.first.visibility = View.GONE
+            val favs = Prefs.favorites().filter { it.kind != Kind.LIVE && (kind == null || it.kind == kind) }.map { PosterAdapter.from(it) }
+            if (favs.isNotEmpty()) addRow("Meus favoritos", favs, Kind.MOVIE)
+            if (kind == null) {
+                val favLive = Prefs.favorites(Kind.LIVE).map { PosterAdapter.from(it) }
+                if (favLive.isNotEmpty()) addRow("Canais favoritos", favLive, Kind.LIVE)
+            }
+            var rowsShown = 0
+            for ((c, items) in rowItems) {
+                if (items.isEmpty()) continue
+                addRow(c.name, items.take(30).map { PosterAdapter.from(it) }, c.kind, c)
+                rowsShown++
+            }
             loaded = true
-            if (column.childCount == 0) {
-                column.addView(TextView(act).apply {
-                    text = "Nenhum destaque disponível."
-                    setTextColor(Ui.text2)
-                    setPadding(0, Ui.dp(act, 40), 0, 0)
-                    gravity = Gravity.CENTER
-                })
+            if (rowsShown == 0 && hero == null) {
+                val e = error
+                if (e is AuthException) act.handleError(e)
+                showEmpty(if (e != null) "Não foi possível carregar o conteúdo agora." else "Nenhum destaque disponível.")
             }
             startRotation()
+
+            // 3) extras do TMDB em segundo plano (fundos em alta e "Em alta"), sem travar a tela
+            if (Tmdb.enabled) {
+                launch { runCatching { enrichHero() }.onFailure { if (it is kotlinx.coroutines.CancellationException) throw it } }
+                launch { runCatching { addTrending() }.onFailure { if (it is kotlinx.coroutines.CancellationException) throw it } }
+            }
+        }
+    }
+
+    private fun showEmpty(msg: String) {
+        val box = LinearLayout(act).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(0, Ui.dp(act, 60), 0, Ui.dp(act, 20))
+        }
+        box.addView(ImageView(act).apply {
+            setImageResource(R.drawable.ic_movie)
+            imageTintList = android.content.res.ColorStateList.valueOf(Ui.withAlpha(Ui.text, 120))
+        }, LinearLayout.LayoutParams(Ui.dp(act, 56), Ui.dp(act, 56)))
+        box.addView(TextView(act).apply {
+            text = msg
+            textSize = 16f
+            setTextColor(Ui.text2)
+            gravity = Gravity.CENTER
+            setPadding(0, Ui.dp(act, 14), 0, Ui.dp(act, 18))
+        })
+        val retry = TextView(act).apply {
+            text = "Tentar novamente"
+            textSize = 15f
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            isFocusable = true
+            isClickable = true
+            background = Ui.button(act, true)
+            setTextColor(Ui.textColors(Color.WHITE, Ui.focusText))
+            setPadding(Ui.dp(act, 28), Ui.dp(act, 12), Ui.dp(act, 28), Ui.dp(act, 12))
+            setOnClickListener { reload() }
+        }
+        Ui.focusZoom(retry, 1.05f)
+        box.addView(retry, LinearLayout.LayoutParams(-2, -2))
+        firstFocusable = retry
+        column.addView(box, LinearLayout.LayoutParams(-1, -2))
+        Ui.fadeIn(box)
+    }
+
+    /** Esqueleto animado enquanto o conteúdo chega (no lugar da bolinha girando). */
+    private fun skeleton(): View {
+        val r = Ui.radius(act) * 1.2f
+        val shade = Ui.withAlpha(Color.WHITE, 22)
+        val box = LinearLayout(act).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(Ui.dp(act, 4), Ui.dp(act, 6), Ui.dp(act, 4), 0)
+        }
+        val top = LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL }
+        val heroBox = AspectFrame(act).apply { ratio = if (portrait) 0.56f else 0.5f; background = Ui.rounded(shade, r) }
+        top.addView(heroBox, LinearLayout.LayoutParams(0, -2, 2f))
+        if (!portrait) repeat(2) {
+            top.addView(View(act).apply { background = Ui.rounded(shade, r) },
+                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 0.92f).apply { marginStart = Ui.dp(act, 10) })
+        }
+        box.addView(top, LinearLayout.LayoutParams(-1, -2))
+        repeat(2) {
+            box.addView(View(act).apply { background = Ui.rounded(shade, Ui.dp(act, 6).toFloat()) },
+                LinearLayout.LayoutParams(Ui.dp(act, 180), Ui.dp(act, 18)).apply { topMargin = Ui.dp(act, 22); bottomMargin = Ui.dp(act, 10) })
+            val row = LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL }
+            repeat(if (portrait) 3 else 7) { i ->
+                row.addView(View(act).apply { background = Ui.rounded(shade, Ui.radius(act).toFloat()) },
+                    LinearLayout.LayoutParams(Ui.dp(act, if (portrait) 108 else 122), Ui.dp(act, if (portrait) 160 else 180)).apply { if (i > 0) marginStart = Ui.dp(act, 10) })
+            }
+            box.addView(row)
+        }
+        android.animation.ObjectAnimator.ofFloat(box, View.ALPHA, 1f, 0.45f).apply {
+            duration = 750
+            repeatMode = android.animation.ValueAnimator.REVERSE
+            repeatCount = android.animation.ValueAnimator.INFINITE
+            box.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+                override fun onViewAttachedToWindow(v: View) = start()
+                override fun onViewDetachedFromWindow(v: View) = cancel()
+            })
+        }
+        return box
+    }
+
+    /** Fundos em alta resolução do TMDB para os primeiros destaques (troca na próxima volta). */
+    private suspend fun enrichHero() {
+        val snapshot = heroFeatures.take(6).toList()
+        val updates = coroutineScope {
+            snapshot.map { f ->
+                async {
+                    val m = f.media ?: return@async null
+                    if (f.image != m.icon) return@async null
+                    val info = withTimeoutOrNull(15_000) { runCatching { Tmdb.info(m) }.getOrNull() } ?: return@async null
+                    if (info.backdrop.isBlank()) null else f to f.copy(image = info.backdrop, subtitle = f.subtitle.ifBlank { info.genres })
+                }
+            }.mapNotNull { it.await() }
+        }
+        updates.forEach { (old, new) ->
+            val i = heroFeatures.indexOf(old)
+            if (i >= 0) heroFeatures[i] = new
+        }
+        if (updates.isNotEmpty() && hero?.hasFocus() != true) showHero?.invoke(heroIndex, false)
+    }
+
+    /** "Em alta esta semana" (TMDB x catálogo do cliente): entra depois, sem segurar a tela. */
+    private suspend fun addTrending() {
+        val trending = withTimeoutOrNull(TRENDING_TIMEOUT) {
+            coroutineScope {
+                kinds().map { k -> async { runCatching { Tmdb.trendingInCatalog(k == Kind.SERIES) }.getOrDefault(emptyList()) } }.flatMap { it.await() }
+            }
+        }.orEmpty()
+        if (trending.isEmpty()) return
+        val title = if (kind == Kind.SERIES) "Séries em alta" else if (kind == Kind.MOVIE) "Filmes em alta" else "Em alta esta semana"
+        val (box, _) = addRow(title, trending.map { (t, m) -> PosterItem(m.name, t.poster.ifEmpty { m.icon }, m.kind, rating = t.rating, media = m) }, Kind.MOVIE)
+        // posiciona logo depois de "Continuar assistindo"
+        val anchor = resumeRow?.first?.let { column.indexOfChild(it) } ?: -1
+        if (anchor >= 0) {
+            column.removeView(box)
+            column.addView(box, anchor + 1)
+        }
+        if (heroFeatures.isNotEmpty()) {
+            val seen = heroFeatures.mapNotNull { it.media?.key }.toHashSet()
+            val extra = trending.filter { seen.add(it.second.key) }.take(4).map { (t, m) ->
+                Feature(m.name, listOf(t.year, if (t.rating.isNotEmpty()) "★ ${t.rating}" else "").filter { it.isNotEmpty() }.joinToString("  •  "),
+                    t.backdrop.ifEmpty { m.icon }, t.poster.ifEmpty { m.icon }, m, null)
+            }
+            val at = PanelConfig.current.banners.size.coerceAtMost(heroFeatures.size)
+            heroFeatures.addAll(at, extra)
+            while (heroFeatures.size > 12) heroFeatures.removeAt(heroFeatures.size - 1)
+            if (heroIndex >= heroFeatures.size) heroIndex = 0
+            if (hero?.hasFocus() != true) showHero?.invoke(heroIndex, false)
         }
     }
 
@@ -201,30 +350,15 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
 
     // ------------------------------------------------------------------ mosaico
 
-    private suspend fun buildFeatures(trending: List<Pair<Tmdb.Trend, Media>>, rows: List<Pair<Category, List<Media>>>): List<Feature> {
+    private fun baseFeatures(rows: List<Pair<Category, List<Media>>>): List<Feature> {
         val out = mutableListOf<Feature>()
         if (kind == null) {
             PanelConfig.current.banners.forEach { b -> out.add(Feature(b.title, b.subtitle, b.image, b.image, null, b)) }
         }
-        trending.forEach { (t, m) ->
-            out.add(Feature(m.name, listOf(t.year, if (t.rating.isNotEmpty()) "★ ${t.rating}" else "").filter { it.isNotEmpty() }.joinToString("  •  "),
-                t.backdrop.ifEmpty { m.icon }, t.poster.ifEmpty { m.icon }, m, null))
-        }
-        val seen = out.mapNotNull { it.media?.key }.toMutableSet()
+        val seen = HashSet<String>()
         rows.flatMap { it.second.take(4) }.filter { it.icon.isNotBlank() && seen.add(it.key) }.take(8).forEach { m ->
             out.add(Feature(m.name, listOf(m.year, if (m.rating.isNotEmpty()) "★ ${m.rating}" else "").filter { it.isNotEmpty() }.joinToString("  •  "),
                 m.icon, m.icon, m, null))
-        }
-        // fundos em alta resolução do TMDB para os primeiros destaques
-        if (Tmdb.enabled) coroutineScope {
-            out.take(6).mapIndexed { i, f ->
-                async {
-                    val m = f.media ?: return@async null
-                    if (f.image != m.icon) return@async null
-                    val info = runCatching { Tmdb.info(m) }.getOrNull() ?: return@async null
-                    if (info.backdrop.isBlank()) null else i to f.copy(image = info.backdrop, subtitle = f.subtitle.ifBlank { info.genres })
-                }
-            }.mapNotNull { it.await() }.forEach { (i, f) -> out[i] = f }
         }
         return out.take(10)
     }
@@ -282,10 +416,12 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
         heroFrame.foreground = Ui.posterFrame(act)
         Ui.focusZoom(heroFrame, 1.02f)
 
-        val heroList = features
-        var index = 0
-        fun showHero(i: Int, animate: Boolean) {
-            val f = heroList[i]
+        heroFeatures.clear()
+        heroFeatures.addAll(features)
+        heroIndex = 0
+        val heroList = heroFeatures
+        fun renderHero(i: Int, animate: Boolean) {
+            val f = heroList.getOrNull(i) ?: return
             if (animate) heroImg.animate().alpha(0.2f).setDuration(180).withEndAction {
                 heroImg.load(f.image.ifBlank { null }) { crossfade(350); error(R.drawable.ic_movie) }
                 heroImg.animate().alpha(1f).setDuration(260).start()
@@ -301,12 +437,15 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
                 }, LinearLayout.LayoutParams(Ui.dp(act, if (d == i) 18 else 7), Ui.dp(act, 7)).apply { marginStart = Ui.dp(act, 4) })
             }
         }
-        showHero(0, false)
-        heroFrame.setOnClickListener { openFeature(heroList[index]) }
+        renderHero(0, false)
+        showHero = { i, anim -> renderHero(i, anim) }
+        heroFrame.setOnClickListener { heroList.getOrNull(heroIndex)?.let { openFeature(it) } }
         hero = heroFrame
         rotate = {
-            index = (index + 1) % heroList.size
-            showHero(index, true)
+            if (heroList.isNotEmpty()) {
+                heroIndex = (heroIndex + 1) % heroList.size
+                renderHero(heroIndex, true)
+            }
         }
 
         left.addView(heroFrame, LinearLayout.LayoutParams(-1, -2))
@@ -325,6 +464,14 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
     }
 
     private var rotate: (() -> Unit)? = null
+    private var showHero: ((Int, Boolean) -> Unit)? = null
+    private val heroFeatures = mutableListOf<Feature>()
+    private var heroIndex = 0
+
+    private companion object {
+        const val STEP_TIMEOUT = 25_000L
+        const val TRENDING_TIMEOUT = 60_000L
+    }
 
     private fun startRotation() {
         rotateJob?.cancel()

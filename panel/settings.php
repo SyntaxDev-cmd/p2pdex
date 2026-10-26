@@ -13,7 +13,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'latest_version_code' => (string)max(1, (int)($_POST['latest_version_code'] ?? 1)),
             'update_url' => trim((string)($_POST['update_url'] ?? '')),
             'force_update' => !empty($_POST['force_update']) ? '1' : '0',
-            'allow_server_select' => !empty($_POST['allow_server_select']) ? '1' : '0',
+            'allow_server_select' => '0', // servidor sempre automático no app
             'register_devices' => !empty($_POST['register_devices']) ? '1' : '0',
             'epg_enabled' => !empty($_POST['epg_enabled']) ? '1' : '0',
             'player_buffer' => in_array($_POST['player_buffer'] ?? '', ['low', 'normal', 'high'], true) ? $_POST['player_buffer'] : 'normal',
@@ -85,7 +85,7 @@ require __DIR__ . '/inc/header.php';
   </div>
   <div class="card">
     <h2>Conexão e player</h2>
-    <label class="switch" style="margin-bottom:10px"><input type="checkbox" name="allow_server_select" value="1" <?= $s['allow_server_select'] === '1' ? 'checked' : '' ?>> Cliente escolhe o servidor no login (senão: automático)</label>
+    <p class="hint" style="margin-bottom:10px">O servidor é escolhido automaticamente: no login o app testa todos os servidores ativos (DNS, P2P e M3U) e entra no primeiro que aceitar o usuário e a senha.</p>
     <label class="switch" style="margin-bottom:10px"><input type="checkbox" name="register_devices" value="1" <?= $s['register_devices'] === '1' ? 'checked' : '' ?>> Registrar dispositivos</label>
     <label class="switch" style="margin-bottom:14px"><input type="checkbox" name="epg_enabled" value="1" <?= $s['epg_enabled'] === '1' ? 'checked' : '' ?>> Mostrar guia de programação (EPG)</label>
     <div class="field"><label>Buffer do player</label><select name="player_buffer">

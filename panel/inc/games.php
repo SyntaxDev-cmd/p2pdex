@@ -31,7 +31,8 @@ function games_get(bool $force = false): array
     if (setting('games_enabled') !== '1' || $url === '') {
         return ['ok' => false, 'games' => [], 'updated' => 0, 'error' => 'disabled', 'source' => ''];
     }
-    $ttl = max(1, (int)setting('games_cache_minutes', '10')) * 60;
+    // jogos mudam ao longo do dia (placar, ao vivo): no máximo 5 minutos de cache
+    $ttl = min(5, max(1, (int)setting('games_cache_minutes', '3'))) * 60;
     $file = games_cache_file();
     $cached = is_file($file) ? json_decode((string)file_get_contents($file), true) : null;
     if (!$force && is_array($cached) && ($cached['url'] ?? '') === $url && time() - (int)($cached['updated'] ?? 0) < $ttl) {

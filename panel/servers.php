@@ -10,6 +10,9 @@ function normalize_url(string $u): string
     $u = trim($u);
     if ($u === '') return '';
     if (!preg_match('#^https?://#i', $u)) $u = 'http://' . $u;
+    // aceita a DNS colada com /player_api.php, ?username=... ou barra no fim
+    $u = preg_replace('#[?\#].*$#', '', $u);
+    $u = preg_replace('#/(player_api|get|panel_api|xmltv)\.php$#i', '', rtrim($u, '/'));
     return rtrim($u, '/');
 }
 
