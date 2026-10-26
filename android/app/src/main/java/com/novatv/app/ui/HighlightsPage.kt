@@ -176,8 +176,7 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
             val homeStreams = kind == null && streamingList().isNotEmpty()
             val streamBox = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; clipChildren = false; clipToPadding = false }
             column.addView(streamBox, LinearLayout.LayoutParams(-1, -2))
-            if (homeStreams) streamBox.addView(streamPlaceholder()) else streamBox.visibility = View.GONE
-            launch { runCatching { fillStreamings(streamBox, big = homeStreams) }.onFailure { if (it is kotlinx.coroutines.CancellationException) throw it } }
+            runCatching { fillStreamings(streamBox, big = homeStreams) }.onFailure { streamBox.visibility = View.GONE }
             val resume = addRow("Continuar assistindo", resumeItems(), Kind.MOVIE)
             resumeRow = resume
             if (resume.second.itemCount == 0) resume.first.visibility = View.GONE
@@ -250,15 +249,11 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
         return row
     }
 
-    private suspend fun fillStreamings(box: LinearLayout, big: Boolean = false) {
+    /** Desenha a fileira na hora (sem esperar a rede); a categoria de cada serviço é procurada no clique. */
+    private fun fillStreamings(box: LinearLayout, big: Boolean = false) {
         val services = streamingList()
-        if (services.isEmpty()) return
-        val cats = coroutineScope {
-            kinds().map { k -> async { withTimeoutOrNull(STEP_TIMEOUT) { runCatching { Repo.categories(k) }.getOrNull() }.orEmpty() } }
-                .flatMap { it.await() }
-        }.filter { !it.locked && it.special == null }
-        // todos aparecem: com categorias próprias abre a categoria; sem elas, o app monta a lista pelo TMDB
-        val found = services.map { st -> st to cats.filter { c -> Repo.matches(c.name, st.keys) } }
+        if (services.isEmpty()) { box.visibility = View.GONE; return }
+        box.visibility = View.VISIBLE
         box.removeAllViews()
         box.addView(title(PanelConfig.current.streamingsTitle, null))
         val row = LinearLayout(act).apply {
@@ -269,8 +264,8 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
             setPadding(Ui.dp(act, 8), Ui.dp(act, 8), Ui.dp(act, 24), Ui.dp(act, 12))
         }
         val size = Ui.dp(act, if (big) (if (portrait) 76 else 96) else if (portrait) 66 else 78)
-        found.forEach { (st, list) ->
-            val circle = streamingCircle(st, list, size)
+        services.forEach { st ->
+            val circle = runCatching { streamingCircle(st, size) }.getOrNull() ?: return@forEach
             if (big) {
                 // ícone + nome embaixo
                 val cell = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; clipChildren = false; clipToPadding = false }
@@ -299,7 +294,7 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
     }
 
     /** Círculo com a logo (ou o nome escrito, se o painel não tiver logo). */
-    private fun streamingCircle(st: Streaming, list: List<Category>, size: Int): View {
+    private fun streamingCircle(st: Streaming, size: Int): View {
         val frame = FrameLayout(act).apply {
             isFocusable = true
             isClickable = true
@@ -316,7 +311,7 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
                 override fun getOutline(view: View, outline: android.graphics.Outline) = outline.setOval(0, 0, view.width, view.height)
             }
             clipToOutline = true
-            setOnClickListener { openStreaming(st.label, list) }
+            setOnClickListener { openStreaming(st) }
         }
         val name = TextView(act).apply {
             text = st.label
@@ -341,6 +336,14 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
         return frame
     }
 
+    private fun openStreaming(st: Streaming) {
+        act.launch {
+            val cats = kinds().flatMap { k -> runCatching { withTimeoutOrNull(STEP_TIMEOUT) { Repo.categories(k) } }.getOrNull().orEmpty() }
+                .filter { !it.locked && it.special == null && Repo.matches(it.name, st.keys) }
+            openStreaming(st.label, cats)
+        }
+    }
+
     private fun openStreaming(name: String, list: List<Category>) {
         fun open(c: Category) = act.openCategory(if (c.kind == Kind.SERIES) "series" else "movies", c)
         if (list.size == 1) { open(list[0]); return }
@@ -351,7 +354,7 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
         // sem categoria com o nome do serviço: lista o que está nele (TMDB) e existe no catálogo do cliente
         val ids = Tmdb.providerIds(name)
         if (!Tmdb.enabled || ids.isEmpty()) {
-            Dialogs.toast(act, "Nenhum conteúdo de $name na sua lista")
+            Dialogs.toast(act, "Nenhum título do $name encontrado na sua lista")
             return
         }
         val ks = kinds()
