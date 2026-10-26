@@ -174,9 +174,11 @@ class GridPage(act: MainActivity, id: String, private val mode: String) : Page(a
                     })
                 }
             } catch (e: Exception) {
+                // troca rápida de aba/categoria cancela o carregamento anterior: não é erro
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 setLoading(false)
                 act.handleError(e)
-                showEmpty("Não foi possível carregar.\n${e.message.orEmpty()}")
+                showRetry("Não foi possível carregar.") { load() }
             }
         }
     }
@@ -213,9 +215,10 @@ class GridPage(act: MainActivity, id: String, private val mode: String) : Page(a
                 if (items.isEmpty()) showEmpty(if (c.special == "fav") favEmpty(c.kind) else "Nenhum título nesta categoria.")
                 else empty.visibility = View.GONE
             } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 setLoading(false)
                 act.handleError(e)
-                showEmpty("Erro ao carregar.")
+                showRetry("Não foi possível abrir esta categoria.") { open(c) }
             }
         }
     }
@@ -248,8 +251,18 @@ class GridPage(act: MainActivity, id: String, private val mode: String) : Page(a
     }
 
     private fun showEmpty(msg: String) {
+        empty.setOnClickListener(null)
+        empty.isFocusable = false
         empty.text = msg
         empty.visibility = View.VISIBLE
+    }
+
+    /** Erro de conexão: a mensagem vira um botão "tentar de novo". */
+    private fun showRetry(msg: String, retry: () -> Unit) {
+        empty.text = "$msg\n\n⟳  ${if (Ui.isTv) "Pressione OK" else "Toque aqui"} para tentar de novo"
+        empty.visibility = View.VISIBLE
+        empty.isFocusable = true
+        empty.setOnClickListener { retry() }
     }
 
     private fun onItem(pos: Int, item: PosterItem) {

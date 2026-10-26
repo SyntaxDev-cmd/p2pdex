@@ -395,6 +395,8 @@ class MainActivity : BaseActivity() {
 
     fun openPlayer() {
         fromPlayer = true
+        // solta a prévia antes: muitos aparelhos só têm um decodificador de vídeo (tela preta / fechamento)
+        current?.onHide()
         startActivity(Intent(this, PlayerActivity::class.java))
     }
 

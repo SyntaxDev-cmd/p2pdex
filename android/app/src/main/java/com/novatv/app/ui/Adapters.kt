@@ -74,7 +74,7 @@ class CategoryAdapter(
         }
         v.setOnClickListener {
             val p = h.bindingAdapterPosition
-            if (p != RecyclerView.NO_POSITION) onClick(p, items[p])
+            items.getOrNull(p)?.let { onClick(p, it) }
         }
         v.setOnKeyListener { _, code, ev ->
             ev.action == KeyEvent.ACTION_DOWN && code == KeyEvent.KEYCODE_DPAD_RIGHT && !chip && onRight?.invoke() == true
@@ -173,11 +173,11 @@ class ChannelAdapter(
         h.fav.imageTintList = android.content.res.ColorStateList.valueOf(Ui.fav)
         v.setOnClickListener {
             val p = h.bindingAdapterPosition
-            if (p != RecyclerView.NO_POSITION) onClick(p, items[p])
+            items.getOrNull(p)?.let { onClick(p, it) }
         }
         v.setOnLongClickListener {
             val p = h.bindingAdapterPosition
-            if (p != RecyclerView.NO_POSITION) onLong(p, items[p])
+            items.getOrNull(p)?.let { onLong(p, it) }
             true
         }
         v.setOnKeyListener { _, code, ev ->
@@ -277,11 +277,11 @@ class PosterAdapter(
         Ui.focusZoom(v, if (section?.id == "kids") 1.12f else 1.08f, bouncy = section?.id == "kids")
         v.setOnClickListener {
             val p = h.bindingAdapterPosition
-            if (p != RecyclerView.NO_POSITION) onClick(p, items[p])
+            items.getOrNull(p)?.let { onClick(p, it) }
         }
         if (onLong != null) v.setOnLongClickListener {
             val p = h.bindingAdapterPosition
-            if (p != RecyclerView.NO_POSITION) onLong.invoke(p, items[p])
+            items.getOrNull(p)?.let { onLong.invoke(p, it) }
             true
         }
         return h
@@ -379,7 +379,7 @@ class BannerAdapter(private val onClick: (Int) -> Unit) : RecyclerView.Adapter<B
         Ui.focusZoom(v, 1.03f)
         v.setOnClickListener {
             val p = h.bindingAdapterPosition
-            if (p != RecyclerView.NO_POSITION) onClick(p)
+            if (p in items.indices) onClick(p)
         }
         return h
     }
@@ -433,7 +433,7 @@ class EpisodeAdapter(private val onClick: (Int, Episode) -> Unit) : RecyclerView
         Ui.focusZoom(v, 1.06f)
         v.setOnClickListener {
             val p = h.bindingAdapterPosition
-            if (p != RecyclerView.NO_POSITION) onClick(p, items[p])
+            items.getOrNull(p)?.let { onClick(p, it) }
         }
         return h
     }

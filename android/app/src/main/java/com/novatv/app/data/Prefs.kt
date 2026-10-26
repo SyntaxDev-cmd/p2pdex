@@ -180,6 +180,15 @@ object Prefs {
     var bufferMode: String
         get() = str("buffer_mode")
         set(v) = put("buffer_mode", v)
+    /** "" = automático (SurfaceView, troca sozinho se ficar sem imagem), "texture" = modo compatível. */
+    var videoSurface: String
+        get() = str("video_surface")
+        set(v) = put("video_surface", v)
+    /** Ligado enquanto o player toca: se o app morrer tocando, a próxima abertura usa o modo compatível. */
+    var playerBusy: Boolean
+        get() = sp.getBoolean("player_busy", false)
+        // commit: precisa estar gravado mesmo se o processo morrer logo em seguida
+        set(v) { sp.edit().putBoolean("player_busy", v).commit() }
     var autoNext: Boolean
         get() = sp.getBoolean("auto_next", true)
         set(v) = sp.edit().putBoolean("auto_next", v).apply()
