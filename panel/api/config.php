@@ -116,6 +116,14 @@ try {
             'action' => $b['action_type'], 'value' => $b['action_value']];
     }
 
+    $streamings = [];
+    if (($s['streamings_enabled'] ?? '1') === '1') {
+        foreach ($pdo->query('SELECT * FROM streamings WHERE active=1 ORDER BY position ASC, id ASC LIMIT 30') as $r) {
+            $streamings[] = ['name' => $r['name'], 'logo' => asset_url($r['logo']), 'keywords' => keywords($r['keywords']),
+                'color' => $r['color'], 'text_color' => $r['text_color']];
+        }
+    }
+
     $messages = [];
     foreach ($pdo->query('SELECT id, title, body, popup, created_at FROM messages WHERE active=1 ORDER BY id DESC LIMIT 20') as $m) {
         $messages[] = ['id' => (int)$m['id'], 'title' => $m['title'], 'body' => $m['body'], 'popup' => (bool)$m['popup'], 'date' => $m['created_at']];
@@ -177,6 +185,7 @@ try {
             'epg' => $s['epg_enabled'] === '1',
         ],
         'banners' => $banners,
+        'streamings' => ['enabled' => ($s['streamings_enabled'] ?? '1') === '1', 'title' => $s['streamings_title'] ?? 'Streamings', 'items' => $streamings],
         'messages' => $messages,
         'maintenance' => ['on' => $s['maintenance'] === '1', 'message' => $s['maintenance_message']],
         'update' => ['version_code' => (int)$s['latest_version_code'], 'url' => $s['update_url'], 'force' => $s['force_update'] === '1'],

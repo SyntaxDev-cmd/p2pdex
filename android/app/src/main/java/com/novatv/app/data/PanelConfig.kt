@@ -23,6 +23,9 @@ data class ServerDef(
     val streamTemplate: String,
 )
 
+/** Streaming da fileira da tela inicial (logo e palavras das categorias vêm do painel). */
+data class StreamingDef(val name: String, val logo: String, val keywords: List<String>, val color: String, val textColor: String)
+
 data class Banner(val title: String, val subtitle: String, val image: String, val action: String, val value: String)
 data class Message(val id: Int, val title: String, val body: String, val popup: Boolean, val date: String)
 data class Tab(val id: String, val label: String, val icon: String = "", val iconOnly: Boolean = true)
@@ -109,6 +112,19 @@ class PanelConfig(val json: JSONObject) {
             arr.optJSONObject(i)?.let { Banner(it.optString("title"), it.optString("subtitle"), it.optString("image"), it.optString("action"), it.optString("value")) }
         }
     } ?: emptyList()
+
+    private val streamingsObj = json.optJSONObject("streamings")
+    /** null = painel antigo (o app usa a lista embutida). */
+    val streamings: List<StreamingDef>? = streamingsObj?.optJSONArray("items")?.let { arr ->
+        (0 until arr.length()).mapNotNull { i ->
+            arr.optJSONObject(i)?.let {
+                StreamingDef(it.optString("name"), it.optString("logo"), it.optJSONArray("keywords").strings(),
+                    it.optString("color", "#FFFFFF"), it.optString("text_color", "#000000"))
+            }
+        }.filter { it.name.isNotBlank() }
+    }
+    val streamingsEnabled: Boolean = streamingsObj?.optBoolean("enabled", true) ?: true
+    val streamingsTitle: String = streamingsObj?.optString("title").orEmpty().ifBlank { "Streamings" }
 
     val messages: List<Message> = json.optJSONArray("messages")?.let { arr ->
         (0 until arr.length()).mapNotNull { i ->

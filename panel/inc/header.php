@@ -13,6 +13,7 @@ if (is_admin()) {
         'integrations' => ['integrations.php', 'Jogos do dia e TMDB', '⚽'],
         'kids' => ['kids.php', 'Kids e controle parental', '🧸'],
         'banners' => ['banners.php', 'Destaques (banners)', '🖼'],
+        'streamings' => ['streamings.php', 'Streamings (logos)', '🎬'],
         'messages' => ['messages.php', 'Avisos', '🔔'],
         'devices' => ['devices.php', 'Dispositivos', '📺'],
         'security' => ['security.php', 'Segurança e registros', '🛡'],

@@ -142,6 +142,16 @@ function migrate(PDO $pdo): void
             position INTEGER NOT NULL DEFAULT 0,
             active INTEGER NOT NULL DEFAULT 1
         );
+        CREATE TABLE IF NOT EXISTS streamings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            logo TEXT NOT NULL DEFAULT '',
+            keywords TEXT NOT NULL DEFAULT '',
+            color TEXT NOT NULL DEFAULT '#FFFFFF',
+            text_color TEXT NOT NULL DEFAULT '#000000',
+            position INTEGER NOT NULL DEFAULT 0,
+            active INTEGER NOT NULL DEFAULT 1
+        );
         CREATE TABLE IF NOT EXISTS messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             title TEXT NOT NULL,
@@ -206,6 +216,16 @@ function migrate(PDO $pdo): void
         CREATE INDEX IF NOT EXISTS idx_servers_reseller ON servers(reseller_id, active);
     ");
 
+    // streamings padrão (só na primeira vez; depois o admin edita/remove à vontade)
+    $seeded = $pdo->query("SELECT value FROM settings WHERE key='streamings_seeded'");
+    if (!($seeded && $seeded->fetchColumn())) {
+        if ((int)$pdo->query('SELECT COUNT(*) FROM streamings')->fetchColumn() === 0) {
+            $st = $pdo->prepare('INSERT INTO streamings (name, keywords, color, text_color, position) VALUES (?, ?, ?, ?, ?)');
+            foreach (default_streamings() as $i => $d) $st->execute([$d[0], $d[1], $d[2], $d[3], $i + 1]);
+        }
+        $pdo->prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('streamings_seeded', '1')")->execute();
+    }
+
     $ins = $pdo->prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
     foreach (default_settings() as $k => $v) {
         $ins->execute([$k, (string)$v]);
@@ -216,6 +236,25 @@ function migrate(PDO $pdo): void
     if (!$key) {
         $pdo->prepare("UPDATE settings SET value=? WHERE key='api_key'")->execute([bin2hex(random_bytes(16))]);
     }
+}
+
+/** [nome, palavras das categorias, cor do círculo, cor do texto] */
+function default_streamings(): array
+{
+    return [
+        ['Netflix', 'netflix', '#000000', '#E50914'],
+        ['Globoplay', 'globoplay, globo play', '#FF3D2E', '#FFFFFF'],
+        ['Prime Video', 'prime video, amazon', '#1A98FF', '#FFFFFF'],
+        ['Disney+', 'disney', '#0B1E5B', '#FFFFFF'],
+        ['HBO Max', 'hbo, max', '#FFFFFF', '#000000'],
+        ['Paramount+', 'paramount', '#0064FF', '#FFFFFF'],
+        ['Crunchyroll', 'crunchyroll', '#F47521', '#FFFFFF'],
+        ['Apple TV+', 'apple', '#111111', '#FFFFFF'],
+        ['Star+', 'star+, star plus', '#2A1A5E', '#FFFFFF'],
+        ['Discovery+', 'discovery', '#0A5BFF', '#FFFFFF'],
+        ['Univer', 'univer', '#7B2FF7', '#FFFFFF'],
+        ['Looke', 'looke', '#00B5AD', '#FFFFFF'],
+    ];
 }
 
 function default_settings(): array
@@ -269,6 +308,8 @@ function default_settings(): array
         'default_user_agent' => '',
         'epg_enabled' => '1',
         // Jogos do dia
+        'streamings_enabled' => '1',
+        'streamings_title' => 'Streamings',
         'games_enabled' => '1',
         'games_api_url' => 'https://xsender.painelmaster.lol/retornojogosmx.json',
         'games_cache_minutes' => '3',
