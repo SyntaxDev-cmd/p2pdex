@@ -95,3 +95,17 @@ jobs:
           name: "NovaTV build ${{ github.run_number }}"
           make_latest: false
           files: dist/*.apk
+
+      - name: Publicar APK de teste (branches claude/**)
+        if: startsWith(github.ref, 'refs/heads/claude/')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: teste
+          target_commitish: ${{ github.sha }}
+          name: "NovaTV - versão de teste (build ${{ github.run_number }})"
+          prerelease: true
+          make_latest: false
+          body: |
+            APK de teste com as últimas correções (commit ${{ github.sha }}, branch ${{ github.ref_name }}).
+            Link fixo: https://github.com/${{ github.repository }}/releases/download/teste/NovaTV.apk
+          files: dist-latest/NovaTV.apk
