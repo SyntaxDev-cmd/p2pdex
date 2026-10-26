@@ -238,6 +238,33 @@ function migrate(PDO $pdo): void
     }
 }
 
+/** Ligas da ESPN que o NovaSports pode mostrar: código => nome (ordem padrão). */
+function sports_catalog(): array
+{
+    return [
+        'bra.1' => 'Brasileirão', 'conmebol.libertadores' => 'Libertadores', 'bra.copa_do_brazil' => 'Copa do Brasil',
+        'uefa.champions' => 'Champions League', 'conmebol.sudamericana' => 'Sul-Americana', 'bra.2' => 'Série B',
+        'eng.1' => 'Premier League', 'esp.1' => 'LaLiga', 'ita.1' => 'Serie A (Itália)', 'ger.1' => 'Bundesliga',
+        'fra.1' => 'Ligue 1', 'por.1' => 'Liga Portugal', 'uefa.europa' => 'Europa League', 'arg.1' => 'Argentina',
+        'bra.camp.paulista' => 'Paulistão', 'bra.camp.carioca' => 'Carioca', 'bra.camp.mineiro' => 'Mineiro',
+        'bra.camp.gaucho' => 'Gaúcho', 'usa.1' => 'MLS', 'fifa.world' => 'Copa do Mundo', 'uefa.nations' => 'Nations League',
+        'conmebol.america' => 'Copa América', 'fifa.cwc' => 'Mundial de Clubes', 'sau.1' => 'Liga Saudita', 'ned.1' => 'Eredivisie',
+    ];
+}
+
+/** Ligas escolhidas no painel, na ordem: [[code, name], ...]. Vazio = padrão do app. */
+function sports_leagues(): array
+{
+    $raw = json_decode(setting('sports_leagues'), true);
+    if (!is_array($raw) || !$raw) return [];
+    $out = [];
+    foreach ($raw as $l) {
+        if (!is_array($l) || empty($l['code']) || empty($l['name'])) continue;
+        $out[] = ['code' => (string)$l['code'], 'name' => (string)$l['name']];
+    }
+    return $out;
+}
+
 /** [nome, palavras das categorias, cor do círculo, cor do texto] */
 function default_streamings(): array
 {
@@ -308,6 +335,20 @@ function default_settings(): array
         'default_user_agent' => '',
         'epg_enabled' => '1',
         // Jogos do dia
+        // App de esportes (NovaSports): marca, cores, ligas e atualização próprias
+        'sports_app_name' => 'NovaSports',
+        'sports_logo' => '',
+        'sports_welcome' => 'Todo o futebol em um só lugar.',
+        'sports_color_primary' => '#19C463',
+        'sports_color_accent' => '#B6FF3B',
+        'sports_color_bg1' => '#0B6B35',
+        'sports_color_bg2' => '#02160B',
+        'sports_color_text2' => '#CFF5D9',
+        'sports_leagues' => '',
+        'sports_keywords' => '',
+        'sports_latest_version_code' => '0',
+        'sports_update_url' => '',
+        'sports_force_update' => '0',
         'streamings_enabled' => '1',
         'streamings_title' => 'Streamings',
         'games_enabled' => '1',

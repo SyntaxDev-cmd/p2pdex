@@ -198,6 +198,27 @@ try {
         ],
     ];
 
+    // ---- app de esportes (NovaSports): marca, cores, ligas e atualização próprias
+    if (req('app', 10) === 'sports') {
+        $payload['app']['name'] = $s['sports_app_name'] ?: 'NovaSports';
+        $payload['app']['logo'] = asset_url($s['sports_logo'] ?? '');
+        $payload['app']['welcome'] = $s['sports_welcome'] ?? '';
+        foreach (['primary', 'accent', 'bg1', 'bg2', 'text2'] as $c) {
+            $v = $s['sports_color_' . $c] ?? '';
+            if (preg_match('/^#[0-9a-fA-F]{6}$/', $v)) $payload['theme'][$c] = $v;
+        }
+        $payload['update'] = [
+            'version_code' => (int)($s['sports_latest_version_code'] ?? 0),
+            'url' => $s['sports_update_url'] ?? '',
+            'force' => ($s['sports_force_update'] ?? '0') === '1',
+        ];
+        $payload['sports'] = [
+            'leagues' => sports_leagues(),
+            'keywords' => keywords($s['sports_keywords'] ?? ''),
+            'espn_proxy' => base_url() . '/api/espn.php',
+        ];
+    }
+
     $etag = '"' . substr(sha1(json_encode($payload)), 0, 20) . '"';
     header('ETag: ' . $etag);
     if (trim((string)($_SERVER['HTTP_IF_NONE_MATCH'] ?? '')) === $etag) {
