@@ -11,27 +11,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Formatos da API da ESPN
+      - name: API de jogos do painel (formato bruto)
         run: |
           set +e
-          B=https://site.api.espn.com/apis/site/v2/sports/soccer
-          echo "== scoreboard bra.1"
-          curl -sS -m 20 "$B/bra.1/scoreboard" | jq -c '{leagues: [.leagues[0] | {name, abbreviation, logo: .logos[0].href}], n: (.events|length), ev: [.events[0:2][] | {id, date, name, shortName, status: .status.type, clock: .status.displayClock, comp: (.competitions[0] | {venue: .venue.fullName, broadcasts, competitors: [.competitors[] | {homeAway, score, team: (.team | {displayName, shortDisplayName, abbreviation, logo})}]})}]}' | head -c 3000; echo
-          echo "== scoreboard all soccer today"
-          curl -sS -m 20 "https://site.api.espn.com/apis/site/v2/sports/soccer/all/scoreboard" | jq -c '{n: (.events|length), keys: (.events[0]|keys), lg: [.events[0:5][] | .competitions[0].league? // .league?]}' | head -c 1500; echo
-          for L in bra.2 bra.copa_do_brazil conmebol.libertadores conmebol.sudamericana uefa.champions uefa.europa eng.1 esp.1 ita.1 ger.1 fra.1 por.1 arg.1 bra.camp.paulista bra.camp.carioca fifa.world; do
-            echo "$L: $(curl -sS -m 15 "$B/$L/scoreboard" | jq -c '[.leagues[0].name, (.events|length), .leagues[0].calendarStartDate]' 2>&1 | head -c 200)"
-          done
-          echo "== news bra.1"
-          curl -sS -m 20 "$B/bra.1/news?limit=3" | jq -c '{header, n: (.articles|length), a: [.articles[0:2][] | {headline, description, published, type, img: .images[0].url, web: .links.web.href, api: .links.api.self.href}]}' | head -c 2500; echo
-          echo "== news soccer (geral)"
-          curl -sS -m 20 "https://site.api.espn.com/apis/site/v2/sports/soccer/news?limit=2" | jq -c '{n: (.articles|length), lang: .articles[0].language?, h: .articles[0].headline}' | head -c 600; echo
-          echo "== news pt (espn.com.br)"
-          curl -sS -m 20 "https://site.api.espn.com/apis/site/v2/sports/soccer/bra.1/news?lang=pt&region=br&limit=2" | jq -c '{n: (.articles|length), h: [.articles[].headline]}' | head -c 600; echo
-          echo "== scoreboard pt"
-          curl -sS -m 20 "$B/bra.1/scoreboard?lang=pt&region=br" | jq -c '[.events[0:1][] | {name, status: .status.type.shortDetail, team: .competitions[0].competitors[0].team.displayName}]' | head -c 600; echo
-          echo "== standings bra.1"
-          curl -sS -m 20 "https://site.api.espn.com/apis/v2/sports/soccer/bra.1/standings" | jq -c '{name, ch: [.children[0:1][] | {name, e: [.standings.entries[0:2][] | {team: (.team | {displayName, abbreviation, logo: .logos[0].href}), stats: [.stats[] | {name, abbreviation, displayValue}], note}]}]}' | head -c 3000; echo
-          echo "== summary (detalhe do jogo)"
-          ID=$(curl -sS -m 20 "$B/bra.1/scoreboard" | jq -r '.events[0].id')
-          curl -sS -m 20 "$B/bra.1/summary?event=$ID" | jq -c '{keys: keys, km: [.keyEvents[0:3][]? | {type: .type.text, clock: .clock.displayValue, text, team: .team.displayName}]}' | head -c 1500; echo
+          curl -sS -m 25 "https://xsender.painelmaster.lol/retornojogosmx.json" -o g.json -w "HTTP %{http_code} %{size_download} bytes\n"
+          head -c 1500 g.json; echo
+          echo "== estrutura"
+          jq -c 'if type=="array" then {tipo:"array", n:length, chaves:(.[0]|keys)} else {tipo:"obj", chaves:keys} end' g.json
+          echo "== 3 primeiros itens"
+          jq -c 'if type=="array" then .[0:3] else (to_entries|.[0:2]) end' g.json | head -c 4000; echo
+          echo "== painel api/games.php"
+          curl -sS -m 25 "https://p2pwmax.dexdown.shop/api/games.php" | jq -c '{ok, n: (.games|length), g: .games[0:3]}' | head -c 2500; echo
+          echo "== ESPN broadcasts (BR)"
+          curl -sS -m 20 "https://site.api.espn.com/apis/site/v2/sports/soccer/bra.1/scoreboard?lang=pt&region=br" | jq -c '[.events[0:3][] | {n: .shortName, b: .competitions[0].broadcasts, geo: .competitions[0].geoBroadcasts}]' | head -c 2000; echo
