@@ -139,10 +139,19 @@ object Repo {
         need().items(kind, categoryId)
     }
 
-    suspend fun items(c: Category): List<Media> = when (c.special) {
-        "fav" -> Prefs.favorites(c.kind)
-        "recent" -> Prefs.recents()
-        else -> items(c.kind, c.id)
+    suspend fun items(c: Category): List<Media> {
+        val sp = c.special
+        return when {
+            sp == "fav" -> Prefs.favorites(c.kind)
+            sp == "recent" -> Prefs.recents()
+            // categorias virtuais usadas pelos atalhos da tela inicial
+            sp == "new" -> searchIndex(c.kind).map { it.second }.sortedByDescending { it.added }.take(200)
+            sp != null && sp.startsWith("year:") -> {
+                val y = sp.removePrefix("year:")
+                searchIndex(c.kind).map { it.second }.filter { it.year == y || it.name.contains(y) }.sortedByDescending { it.added }.take(300)
+            }
+            else -> items(c.kind, c.id)
+        }
     }
 
     suspend fun all(kind: Kind): List<Media> = cached("all:$kind") { need().all(kind) }
@@ -200,6 +209,9 @@ object Repo {
         val allowed = categories(Kind.LIVE).filter { !it.locked }.map { it.id }.toHashSet()
         all(Kind.LIVE).filter { it.categoryId in allowed || it.categoryId.isEmpty() }.map { Games.compact(it.name) to it }
     }
+
+    /** Catálogo completo visível para o perfil (nome normalizado + item). */
+    suspend fun searchIndex(kind: Kind): List<Pair<String, Media>> = index(kind)
 
     /** Busca em todo o catálogo (sem acento, sem diferenciar maiúsculas). */
     suspend fun search(query: String, kinds: List<Kind>): List<Media> = coroutineScope {

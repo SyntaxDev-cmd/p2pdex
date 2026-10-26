@@ -45,6 +45,7 @@ class MainActivity : BaseActivity() {
 
     private val pages = HashMap<String, Page>()
     private val tabViews = LinkedHashMap<String, TextView>()
+    private val bottomViews = LinkedHashMap<String, View>()
     private var current: Page? = null
     private var currentTab = ""
     private var tabJob: Job? = null
@@ -69,6 +70,7 @@ class MainActivity : BaseActivity() {
 
         setupTopBar()
         buildTabs()
+        buildBottomBar()
         startClock()
         hideEmptyOptionalTabs()
 
@@ -180,6 +182,69 @@ class MainActivity : BaseActivity() {
         }
     }
 
+    /** Celular em pé: barra de navegação inferior (como nos apps de streaming). */
+    private fun buildBottomBar() {
+        val portrait = resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT
+        if (Ui.isTv || !portrait) return
+        val order = listOf("highlights", "tv", "sports", "movies", "series", "kids", "favorites")
+        val tabs = PanelConfig.current.tabs.filter { tabViews.containsKey(it.id) }.sortedBy { order.indexOf(it.id).let { i -> if (i < 0) 99 else i } }.take(4)
+        if (tabs.size < 2) return
+        val bar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(Ui.dp(this@MainActivity, 6), Ui.dp(this@MainActivity, 4), Ui.dp(this@MainActivity, 6), Ui.dp(this@MainActivity, 6))
+            background = GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP,
+                intArrayOf(Ui.withAlpha(Ui.surfaceSolid, 250), Ui.withAlpha(Ui.surfaceSolid, 215)))
+            elevation = Ui.dp(this@MainActivity, 8).toFloat()
+        }
+        val tint = android.content.res.ColorStateList(
+            arrayOf(intArrayOf(android.R.attr.state_selected), intArrayOf()),
+            intArrayOf(Ui.primary.takeIf { it != Ui.surfaceSolid } ?: Ui.text, Ui.withAlpha(Ui.text, 150)),
+        )
+        fun item(id: String, label: String, icon: Int, click: () -> Unit): View {
+            val box = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                isClickable = true
+                setPadding(0, Ui.dp(this@MainActivity, 4), 0, Ui.dp(this@MainActivity, 2))
+                background = android.graphics.drawable.RippleDrawable(
+                    android.content.res.ColorStateList.valueOf(Ui.withAlpha(Ui.text, 40)), null, null)
+                setOnClickListener { click() }
+            }
+            box.addView(ImageView(this).apply {
+                setImageResource(icon)
+                imageTintList = tint
+                isDuplicateParentStateEnabled = true
+            }, LinearLayout.LayoutParams(Ui.dp(this, 24), Ui.dp(this, 24)))
+            box.addView(TextView(this).apply {
+                text = label
+                textSize = 11f
+                maxLines = 1
+                setTextColor(tint)
+                isDuplicateParentStateEnabled = true
+            })
+            return box
+        }
+        tabs.forEach { t ->
+            val icon = when (t.id) {
+                "tv" -> R.drawable.ic_tv
+                "sports" -> R.drawable.ic_ball
+                "highlights" -> R.drawable.ic_home
+                "movies" -> R.drawable.ic_cinema
+                "series" -> R.drawable.ic_list
+                "kids" -> R.drawable.ic_kids
+                "favorites" -> R.drawable.ic_heart
+                else -> R.drawable.ic_star
+            }
+            val label = t.label.lowercase().replaceFirstChar { it.uppercase() }
+            val v = item(t.id, label, icon) { switchTab(t.id) }
+            bottomViews[t.id] = v
+            bar.addView(v, LinearLayout.LayoutParams(0, -2, 1f))
+        }
+        bar.addView(item("search", "Buscar", R.drawable.ic_search) { openSearch() }, LinearLayout.LayoutParams(0, -2, 1f))
+        (pagesContainer.parent as LinearLayout).addView(bar, LinearLayout.LayoutParams(-1, -2))
+    }
+
     /** Ícone da aba enviado no painel (PNG 128x128), mostrado com 24dp ao lado do nome. */
     private fun loadTabIcon(tv: TextView, url: String) {
         val size = Ui.dp(this, 22)
@@ -249,6 +314,7 @@ class MainActivity : BaseActivity() {
         current = page
         page.onShow()
         tabViews.forEach { (k, v) -> v.isSelected = k == id }
+        bottomViews.forEach { (k, v) -> v.isSelected = k == id }
         tabViews[id]?.let { v ->
             if (focusTab) v.requestFocus()
             tabsScroll.post { tabsScroll.smoothScrollTo((v.left - Ui.dp(this, 40)).coerceAtLeast(0), 0) }
@@ -268,6 +334,22 @@ class MainActivity : BaseActivity() {
     }
 
     // ------------------------------------------------------------------ navegação
+
+    /** Atalhos da tela inicial: abre uma aba (se existir). */
+    fun goToTab(id: String) {
+        if (tabViews.containsKey(id)) switchTab(id, focusTab = false) else Dialogs.toast(this, "Seção indisponível")
+        pages[id]?.focusContent()
+    }
+
+    /** Abre a aba de filmes/séries já numa categoria (inclusive virtuais: ano, recentes). */
+    fun openCategory(tabId: String, c: com.novatv.app.data.Category) {
+        if (!tabViews.containsKey(tabId)) {
+            Dialogs.toast(this, "Seção indisponível")
+            return
+        }
+        switchTab(tabId)
+        (pages[tabId] as? GridPage)?.openFromOutside(c)
+    }
 
     fun openPlayer() {
         fromPlayer = true

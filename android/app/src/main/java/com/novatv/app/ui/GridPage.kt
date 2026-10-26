@@ -1,6 +1,8 @@
 package com.novatv.app.ui
 
 import android.view.LayoutInflater
+import android.view.ViewGroup
+import android.widget.FrameLayout
 import android.view.View
 import android.widget.ProgressBar
 import android.widget.TextView
@@ -28,12 +30,21 @@ class GridPage(act: MainActivity, id: String, private val mode: String) : Page(a
     private val kids = mode == "kids"
     private val accent = if (kids) Ui.kids else Ui.accent
 
-    private val cats = CategoryAdapter(portrait, ::onCategory, onRight = { focusGrid() })
+    private val cats = CategoryAdapter(portrait, ::onCategory, onRight = {
+        (current?.special == "home" && homeView?.focus() == true) || focusGrid()
+    })
     private val posters = PosterAdapter(::onItem, accentColor = accent, onLong = ::onLong)
     private val layout = GridLayoutManager(act, spanGuess())
     private var loaded = false
     private var job: Job? = null
     private var current: Category? = null
+    private var homeView: HomeView? = null
+    private var pendingOpen: Category? = null
+    private val pageKind: Kind? = when (mode) {
+        "movies" -> Kind.MOVIE
+        "series" -> Kind.SERIES
+        else -> null
+    }
 
     init {
         view.findViewById<View>(R.id.catPanel)?.background = Ui.panel(act)
@@ -70,6 +81,7 @@ class GridPage(act: MainActivity, id: String, private val mode: String) : Page(a
     }
 
     override fun onShow() {
+        if (current?.special == "home") homeView?.onShow()
         if (!loaded) load()
         else {
             // favoritos podem ter mudado em outra tela
@@ -78,19 +90,44 @@ class GridPage(act: MainActivity, id: String, private val mode: String) : Page(a
         }
     }
 
+    override fun onHide() {
+        homeView?.onHide()
+    }
+
     override fun reload() {
         loaded = false
+        homeView?.reload()
         load()
     }
 
-    override fun focusContent(): Boolean = focusGrid() || catList.requestFocus()
+    /** Aberto por um atalho/“ver tudo” da tela inicial. */
+    fun openFromOutside(c: Category) {
+        if (!loaded) {
+            pendingOpen = c
+            return
+        }
+        val pos = cats.items.indexOfFirst { it.key == c.key && it.special == c.special }
+        if (pos >= 0) {
+            catList.scrollToPosition(pos)
+            onCategory(pos, cats.items[pos])
+        } else {
+            cats.select(-1)
+            if (c.locked && !Repo.isUnlocked(c)) Dialogs.pin(act) { Repo.unlock(c); open(c) } else open(c)
+        }
+        act.launch { kotlinx.coroutines.delay(300); focusGrid() }
+    }
+
+    override fun focusContent(): Boolean =
+        (current?.special == "home" && homeView?.focus() == true) || focusGrid() || catList.requestFocus()
 
     private fun load() {
         job?.cancel()
         job = act.launch {
             setLoading(true)
             try {
-                val list: List<Category> = when (mode) {
+                val home = if (pageKind != null && com.novatv.app.data.PanelConfig.current.homeMosaic)
+                    listOf(Category("home", "Início", pageKind, special = "home")) else emptyList()
+                val list: List<Category> = home + when (mode) {
                     "movies" -> listOf(Category("fav", "Favoritos", Kind.MOVIE, special = "fav")) + Repo.categories(Kind.MOVIE)
                     "series" -> listOf(Category("fav", "Favoritos", Kind.SERIES, special = "fav")) + Repo.categories(Kind.SERIES)
                     "kids" -> Repo.kidsCategories()
@@ -103,12 +140,16 @@ class GridPage(act: MainActivity, id: String, private val mode: String) : Page(a
                     else -> emptyList()
                 }
                 val last = Prefs.lastCategory(id)
-                var sel = list.indexOfFirst { it.key == last && !it.locked }
+                var sel = if (home.isNotEmpty()) 0 else list.indexOfFirst { it.key == last && !it.locked }
                 if (sel < 0) sel = list.indexOfFirst { it.special == null && !it.locked }
                 if (sel < 0 && list.isNotEmpty()) sel = 0
                 cats.submit(list, sel)
                 loaded = true
-                if (sel >= 0) {
+                val pend = pendingOpen
+                pendingOpen = null
+                if (pend != null) {
+                    openFromOutside(pend)
+                } else if (sel >= 0) {
                     catList.scrollToPosition(sel)
                     open(list[sel])
                 } else {
@@ -142,6 +183,11 @@ class GridPage(act: MainActivity, id: String, private val mode: String) : Page(a
 
     private fun open(c: Category, keepScroll: Boolean = false) {
         current = c
+        if (c.special == "home") {
+            showHome(true)
+            return
+        }
+        showHome(false)
         if (c.special == null || mode == "favorites") Prefs.setLastCategory(id, c.key)
         job?.cancel()
         job = act.launch {
@@ -158,6 +204,25 @@ class GridPage(act: MainActivity, id: String, private val mode: String) : Page(a
                 act.handleError(e)
                 showEmpty("Erro ao carregar.")
             }
+        }
+    }
+
+    /** Troca entre a grade de cartazes e o “Início” em mosaico. */
+    private fun showHome(on: Boolean) {
+        val kindNow = pageKind ?: return
+        if (on) {
+            val hv = homeView ?: HomeView(act, kindNow).also {
+                homeView = it
+                (grid.parent as ViewGroup).addView(it.view, FrameLayout.LayoutParams(-1, -1))
+            }
+            grid.visibility = View.GONE
+            empty.visibility = View.GONE
+            loading.visibility = View.GONE
+            hv.view.visibility = View.VISIBLE
+            hv.onShow()
+        } else {
+            homeView?.let { it.onHide(); it.view.visibility = View.GONE }
+            grid.visibility = View.VISIBLE
         }
     }
 

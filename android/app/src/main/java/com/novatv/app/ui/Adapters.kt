@@ -87,6 +87,7 @@ class CategoryAdapter(
         h.lock.visibility = if (c.locked) View.VISIBLE else View.GONE
         val icon = when {
             c.special == "fav" -> R.drawable.ic_heart
+            c.special == "home" -> R.drawable.ic_home
             c.special == "recent" -> R.drawable.ic_refresh
             showKind -> when (c.kind) {
                 Kind.LIVE -> R.drawable.ic_tv

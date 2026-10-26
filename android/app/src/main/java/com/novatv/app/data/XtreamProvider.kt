@@ -227,6 +227,7 @@ class XtreamProvider(
                 rating = cleanRating(info.optString("rating")).ifEmpty { m.rating },
                 year = yearOf(info.optString("releaseDate")).ifEmpty { m.year },
                 duration = info.optString("episode_run_time").let { if (it.isNotBlank() && it != "0") "$it min/ep" else "" },
+                tmdbId = info.optString("tmdb").ifBlank { info.optString("tmdb_id") },
                 seasons = seasons,
             )
         }
@@ -245,6 +246,7 @@ class XtreamProvider(
             year = yearOf(info.optString("releasedate")).ifEmpty { m.year },
             duration = info.optString("duration").removePrefix("00:"),
             ext = data.optString("container_extension").ifBlank { m.ext },
+            tmdbId = info.optString("tmdb_id").ifBlank { info.optString("tmdb") },
         )
     }
 

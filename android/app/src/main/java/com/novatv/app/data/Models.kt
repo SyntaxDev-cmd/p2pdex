@@ -80,6 +80,8 @@ data class Details(
     val year: String,
     val duration: String,
     val ext: String = "",
+    /** ID do TMDB informado pelo servidor (quando houver). */
+    val tmdbId: String = "",
     /** Somente séries: temporada -> episódios (ordenados). */
     val seasons: Map<Int, List<Episode>> = emptyMap(),
 )
