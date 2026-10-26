@@ -25,7 +25,7 @@ data class ServerDef(
 
 data class Banner(val title: String, val subtitle: String, val image: String, val action: String, val value: String)
 data class Message(val id: Int, val title: String, val body: String, val popup: Boolean, val date: String)
-data class Tab(val id: String, val label: String)
+data class Tab(val id: String, val label: String, val icon: String = "")
 
 class PanelConfig(val json: JSONObject) {
     private val app = json.optJSONObject("app") ?: JSONObject()
@@ -45,6 +45,19 @@ class PanelConfig(val json: JSONObject) {
     val support: String = app.optString("support")
     val startTab: String = app.optString("start_tab", "tv")
     val allowServerSelect: Boolean = app.optBoolean("allow_server_select", true)
+    val resellerName: String = app.optString("reseller")
+    val askResellerCode: Boolean = app.optBoolean("ask_reseller_code", false)
+    val homeMosaic: Boolean = app.optBoolean("home_mosaic", true)
+
+    private val games = json.optJSONObject("games") ?: JSONObject()
+    val gamesEnabled: Boolean = games.optBoolean("enabled", false)
+    val gamesUrl: String = games.optString("url")
+
+    private val tmdb = json.optJSONObject("tmdb") ?: JSONObject()
+    val tmdbEnabled: Boolean = tmdb.optBoolean("enabled", true)
+    val tmdbKey: String = tmdb.optString("api_key").ifBlank { AppConfig.tmdbKey }
+    val tmdbToken: String = tmdb.optString("token").ifBlank { AppConfig.tmdbToken }
+    val tmdbLanguage: String = tmdb.optString("language").ifBlank { AppConfig.tmdbLanguage }
 
     fun color(key: String, def: String): String = theme.optString(key).ifBlank { def }
     val surfaceOpacity: Int = theme.optInt("surface_opacity", 35)
@@ -52,7 +65,7 @@ class PanelConfig(val json: JSONObject) {
     val scale: Int = theme.optInt("scale", 100)
 
     val tabs: List<Tab> = json.optJSONArray("tabs")?.let { arr ->
-        (0 until arr.length()).mapNotNull { i -> arr.optJSONObject(i)?.let { Tab(it.optString("id"), it.optString("label")) } }
+        (0 until arr.length()).mapNotNull { i -> arr.optJSONObject(i)?.let { Tab(it.optString("id"), it.optString("label"), it.optString("icon")) } }
     } ?: listOf(Tab("tv", "TV"), Tab("sports", "JOGOS"), Tab("highlights", "DESTAQUES"), Tab("movies", "FILMES"),
         Tab("series", "SÉRIES"), Tab("kids", "KIDS"), Tab("anime", "ANIME"), Tab("favorites", "FAVORITOS"))
 
@@ -109,6 +122,8 @@ class PanelConfig(val json: JSONObject) {
     val updateUrl: String = json.optJSONObject("update")?.optString("url").orEmpty()
     val forceUpdate: Boolean = json.optJSONObject("update")?.optBoolean("force") ?: false
     val blocked: Boolean = json.optJSONObject("device")?.optBoolean("blocked") ?: false
+    val blockReason: String = json.optJSONObject("device")?.optString("reason").orEmpty()
+    val blockMessage: String = json.optJSONObject("device")?.optString("message").orEmpty()
 
     val pin: String get() = Prefs.customPin.ifEmpty { panelPin }
 
@@ -119,6 +134,17 @@ class PanelConfig(val json: JSONObject) {
         @Volatile
         var current: PanelConfig = load()
             private set
+
+        /** Último erro do painel (ex.: código de revenda inválido) para mostrar ao usuário. */
+        @Volatile
+        var lastError: String = ""
+            private set
+        @Volatile
+        var lastErrorCode: String = ""
+            private set
+
+        /** Código efetivo: o do APK tem prioridade sobre o digitado. */
+        val resellerCode: String get() = AppConfig.resellerCode.ifEmpty { Prefs.resellerCode }
 
         private fun load(): PanelConfig =
             runCatching { PanelConfig(JSONObject(Prefs.configJson)) }.getOrElse { PanelConfig(JSONObject()) }
@@ -132,6 +158,7 @@ class PanelConfig(val json: JSONObject) {
             if (AppConfig.panelUrl.isBlank()) return@withContext false
             val url = Uri.parse(AppConfig.panelUrl + "/api/config.php").buildUpon()
                 .appendQueryParameter("key", AppConfig.panelKey)
+                .appendQueryParameter("reseller", resellerCode)
                 .appendQueryParameter("device_id", Prefs.deviceId)
                 .appendQueryParameter("model", (Build.MANUFACTURER + " " + Build.MODEL).trim().take(80))
                 .appendQueryParameter("platform", if (Ui.isTv) "tv" else "mobile")
@@ -144,11 +171,21 @@ class PanelConfig(val json: JSONObject) {
                 val req = Net.request(url).newBuilder().apply {
                     if (Prefs.configEtag.isNotEmpty() && Prefs.configJson.isNotEmpty()) header("If-None-Match", Prefs.configEtag)
                 }.build()
+                lastError = ""
+                lastErrorCode = ""
                 Net.execute(Net.api, req).use { resp ->
                     if (resp.code == 304) return@withContext true
                     val body = resp.body?.string().orEmpty()
                     val obj = JSONObject(body)
-                    if (!obj.optBoolean("ok")) return@withContext false
+                    if (!obj.optBoolean("ok")) {
+                        lastErrorCode = obj.optString("error")
+                        lastError = obj.optString("message")
+                        // código de revenda errado: não reaproveita configuração de outra revenda
+                        if (lastErrorCode == "invalid_reseller" || lastErrorCode == "reseller_required") {
+                            Prefs.configEtag = ""
+                        }
+                        return@withContext false
+                    }
                     Prefs.configJson = body
                     Prefs.configEtag = resp.header("ETag").orEmpty()
                     current = PanelConfig(obj)

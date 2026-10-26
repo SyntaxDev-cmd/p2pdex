@@ -13,6 +13,9 @@ on:
         description: "Chave PANEL_KEY do painel. Vazio = usa secret/gradle.properties"
         required: false
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -67,3 +70,25 @@ jobs:
           name: NovaTV-apk-${{ github.run_number }}
           path: dist/*.apk
           if-no-files-found: error
+
+      - name: Publicar APK na Release "latest"
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: "NovaTV - última versão (build ${{ github.run_number }})"
+          make_latest: true
+          body: |
+            APK gerado automaticamente a partir do commit ${{ github.sha }}.
+            Baixe o arquivo **.apk** abaixo e instale no Android / TV Box.
+            Versão interna (versionCode): ${{ github.run_number }} — use esse número em Painel → Sistema → "Última versão" para avisar os clientes.
+          files: dist/*.apk
+
+      - name: Publicar APK numa Release com o número da versão
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ github.run_number }}
+          name: "NovaTV build ${{ github.run_number }}"
+          make_latest: false
+          files: dist/*.apk

@@ -132,7 +132,7 @@ object Repo {
     /** Troca de perfil: limpa desbloqueios temporários e índices de busca. */
     fun onProfileChanged() {
         synchronized(unlocked) { unlocked.clear() }
-        cache.keys.filter { it.startsWith("idx:") }.forEach { cache.remove(it) }
+        cache.keys.filter { it.startsWith("idx:") || it.startsWith("live:") }.forEach { cache.remove(it) }
     }
 
     suspend fun items(kind: Kind, categoryId: String): List<Media> = cached("items:$kind:$categoryId") {
@@ -193,6 +193,12 @@ object Repo {
         val allowed = categories(kind).filter { !it.locked }.map { it.id }.toHashSet()
         all(kind).filter { it.categoryId in allowed || it.categoryId.isEmpty() && Profiles.current?.kids != true }
             .map { normalize(it.name) to it }
+    }
+
+    /** Canais ao vivo visíveis para o perfil, com nome compactado (para achar o canal do jogo). */
+    suspend fun liveIndex(): List<Pair<String, Media>> = cached("live:${Profiles.currentId}") {
+        val allowed = categories(Kind.LIVE).filter { !it.locked }.map { it.id }.toHashSet()
+        all(Kind.LIVE).filter { it.categoryId in allowed || it.categoryId.isEmpty() }.map { Games.compact(it.name) to it }
     }
 
     /** Busca em todo o catálogo (sem acento, sem diferenciar maiúsculas). */

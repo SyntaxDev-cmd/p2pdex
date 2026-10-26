@@ -159,6 +159,7 @@ class MainActivity : BaseActivity() {
                     if (ev.action == KeyEvent.ACTION_DOWN && code == KeyEvent.KEYCODE_DPAD_DOWN) current?.focusContent() ?: false else false
                 }
             }
+            if (t.icon.isNotBlank()) loadTabIcon(tv, t.icon)
             val isKids = t.id == "kids"
             Ui.focusZoom(tv, 1.08f) { has ->
                 if (isKids) rainbow(tv, !has)
@@ -179,6 +180,22 @@ class MainActivity : BaseActivity() {
         }
     }
 
+    /** Ícone da aba enviado no painel (PNG 128x128), mostrado com 24dp ao lado do nome. */
+    private fun loadTabIcon(tv: TextView, url: String) {
+        val size = Ui.dp(this, 22)
+        val req = coil.request.ImageRequest.Builder(this)
+            .data(url)
+            .size(size * 2, size * 2)
+            .target(onSuccess = { d ->
+                d.setBounds(0, 0, size, size)
+                tv.compoundDrawablePadding = Ui.dp(this, 8)
+                tv.setCompoundDrawablesRelative(d, null, null, null)
+                if (android.os.Build.VERSION.SDK_INT >= 23) tv.compoundDrawableTintList = Ui.textColors(Ui.text, Ui.focusText)
+            })
+            .build()
+        coil.Coil.imageLoader(this).enqueue(req)
+    }
+
     private fun rainbow(tv: TextView, on: Boolean) {
         if (!on || tv.width == 0) {
             tv.paint.shader = null
@@ -196,7 +213,7 @@ class MainActivity : BaseActivity() {
     /** JOGOS e ANIME só aparecem se existir conteúdo com as palavras-chave. */
     private fun hideEmptyOptionalTabs() {
         launch {
-            if (tabViews.containsKey("sports")) {
+            if (tabViews.containsKey("sports") && !PanelConfig.current.gamesEnabled) {
                 val has = runCatching { Repo.filtered(Kind.LIVE, Repo.config.sportsKeywords).isNotEmpty() }.getOrDefault(true)
                 if (!has) tabViews["sports"]?.visibility = View.GONE
             }
@@ -240,7 +257,7 @@ class MainActivity : BaseActivity() {
 
     private fun createPage(id: String): Page = when (id) {
         "tv" -> LivePage(this, id, "tv")
-        "sports" -> LivePage(this, id, "sports")
+        "sports" -> if (PanelConfig.current.gamesEnabled) GamesPage(this, id) else LivePage(this, id, "sports")
         "highlights" -> HighlightsPage(this, id)
         "movies" -> GridPage(this, id, "movies")
         "series" -> GridPage(this, id, "series")
@@ -335,7 +352,7 @@ class MainActivity : BaseActivity() {
                 return true
             }
             KeyEvent.KEYCODE_GUIDE -> {
-                val live = current as? LivePage
+                val live = (current as? LivePage) ?: (current as? GamesPage)?.livePage()
                 if (live != null) live.openGuide() else if (tabViews.containsKey("tv")) switchTab("tv", true)
                 return true
             }

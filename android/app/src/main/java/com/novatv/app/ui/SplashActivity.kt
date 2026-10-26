@@ -61,9 +61,28 @@ class SplashActivity : BaseActivity() {
                 ), cancelable = false)
                 return@launch
             }
+            val err = PanelConfig.lastErrorCode
+            if (err == "invalid_reseller" || err == "reseller_required") {
+                if (com.novatv.app.data.AppConfig.resellerCode.isNotEmpty()) {
+                    Dialogs.show(this@SplashActivity, "Revenda indisponível", PanelConfig.lastError, listOf(
+                        Dialogs.Btn("Sair") { finish() },
+                        Dialogs.Btn("Tentar de novo", true) { start() },
+                    ), cancelable = false)
+                } else {
+                    Prefs.resellerCode = ""
+                    startActivity(Intent(this@SplashActivity, LoginActivity::class.java)
+                        .putExtra("error", PanelConfig.lastError).putExtra("ask_code", true))
+                    finish()
+                }
+                return@launch
+            }
             if (cfg.blocked) {
-                Dialogs.show(this@SplashActivity, "Dispositivo bloqueado", "Este aparelho foi bloqueado.\n${cfg.support}",
-                    listOf(Dialogs.Btn("Sair", true) { finish() }), cancelable = false)
+                val title = if (cfg.blockReason == "limit") "Limite de aparelhos" else "Dispositivo bloqueado"
+                val msg = cfg.blockMessage.ifBlank { "Este aparelho foi bloqueado." } + "\n\n" + cfg.support
+                Dialogs.show(this@SplashActivity, title, msg, listOf(
+                    Dialogs.Btn("Sair") { finish() },
+                    Dialogs.Btn("Tentar de novo", true) { start() },
+                ), cancelable = false)
                 return@launch
             }
             if (cfg.maintenance) {

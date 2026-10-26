@@ -13,6 +13,9 @@ object AppConfig {
         private set
     var panelKey: String = BuildConfig.PANEL_KEY
         private set
+    /** Código da revenda (APK personalizado por revenda). */
+    var resellerCode: String = ""
+        private set
     var tmdbKey: String = ""
         private set
     var tmdbToken: String = ""
@@ -32,6 +35,7 @@ object AppConfig {
             val o = JSONObject(txt)
             o.optString("panel_url").trim().trimEnd('/').takeIf { it.startsWith("http") }?.let { panelUrl = it }
             o.optString("panel_key").trim().takeIf { it.isNotEmpty() }?.let { panelKey = it }
+            resellerCode = o.optString("reseller_code").trim().uppercase()
             tmdbKey = o.optString("tmdb_api_key").trim()
             tmdbToken = o.optString("tmdb_read_token").trim()
             o.optString("tmdb_language").trim().takeIf { it.isNotEmpty() }?.let { tmdbLanguage = it }

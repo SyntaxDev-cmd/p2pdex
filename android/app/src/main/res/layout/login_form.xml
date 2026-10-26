@@ -38,6 +38,16 @@
         android:text="Use o usuário e a senha da sua assinatura"
         android:textSize="14sp" />
 
+    <EditText
+        android:id="@+id/resellerCode"
+        style="@style/LoginField"
+        android:drawableStart="@drawable/ic_star"
+        android:hint="Código da revenda"
+        android:imeOptions="actionNext"
+        android:inputType="textCapCharacters|textNoSuggestions"
+        android:maxLength="12"
+        android:visibility="gone" />
+
     <TextView
         android:id="@+id/server"
         style="@style/LoginField"

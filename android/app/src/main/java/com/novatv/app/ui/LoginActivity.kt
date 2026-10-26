@@ -44,6 +44,7 @@ class LoginActivity : BaseActivity() {
 
     private lateinit var serverView: TextView
     private lateinit var dns: EditText
+    private lateinit var codeField: EditText
     private lateinit var user: EditText
     private lateinit var pass: EditText
     private lateinit var errorBox: View
@@ -64,6 +65,7 @@ class LoginActivity : BaseActivity() {
 
         serverView = findViewById(R.id.server)
         dns = findViewById(R.id.dns)
+        codeField = findViewById(R.id.resellerCode)
         user = findViewById(R.id.user)
         pass = findViewById(R.id.pass)
         errorBox = findViewById(R.id.errorBox)
@@ -74,6 +76,12 @@ class LoginActivity : BaseActivity() {
 
         styleScreen(cfg)
         adaptLayout()
+        // código de revenda: só quando o APK não traz um e o painel pede
+        val askCode = com.novatv.app.data.AppConfig.resellerCode.isEmpty() &&
+            (cfg.askResellerCode || intent.getBooleanExtra("ask_code", false) || Prefs.resellerCode.isNotEmpty())
+        codeField.visibility = if (askCode) View.VISIBLE else View.GONE
+        codeField.setText(Prefs.resellerCode)
+        if (cfg.resellerName.isNotEmpty()) findViewById<TextView>(R.id.subtitle).text = "Revenda: ${cfg.resellerName}"
         setupServers(cfg)
 
         user.setText(Prefs.username)
@@ -123,7 +131,7 @@ class LoginActivity : BaseActivity() {
         if (cfg.logo.isNotEmpty()) logos.forEach { it.load(cfg.logo) { error(R.mipmap.ic_launcher) } }
 
         val iconTint = Ui.textColors(Ui.withAlpha(Ui.text, 160), Ui.text)
-        listOf(dns, user, pass).forEach {
+        listOf(codeField, dns, user, pass).forEach {
             it.background = Ui.inputBg(this)
             it.setTextColor(Ui.text)
             it.setHintTextColor(Ui.withAlpha(Ui.text, 120))
@@ -310,6 +318,26 @@ class LoginActivity : BaseActivity() {
         if (busy) return
         val u = user.text.toString().trim()
         val p = pass.text.toString().trim()
+        val code = codeField.text.toString().trim().uppercase()
+        if (codeField.visibility == View.VISIBLE && code != Prefs.resellerCode) {
+            // novo código: busca os servidores dessa revenda antes de entrar
+            setBusy(true)
+            launch {
+                Prefs.resellerCode = code
+                val ok = PanelConfig.refresh()
+                setBusy(false)
+                if (!ok && PanelConfig.lastError.isNotEmpty()) {
+                    Prefs.resellerCode = ""
+                    showError(PanelConfig.lastError)
+                    codeField.requestFocus()
+                } else {
+                    Ui.apply(PanelConfig.current)
+                    setupServers(PanelConfig.current)
+                    doLogin()
+                }
+            }
+            return
+        }
         when {
             dns.visibility == View.VISIBLE && dns.text.isBlank() -> { showError("Informe a DNS do servidor."); dns.requestFocus(); return }
             u.isEmpty() -> { showError("Informe seu usuário."); user.requestFocus(); return }
@@ -365,6 +393,6 @@ class LoginActivity : BaseActivity() {
         busy = on
         loading.visibility = if (on) View.VISIBLE else View.GONE
         loginBtn.text = if (on) "" else "ENTRAR"
-        listOf(user, pass, dns, serverView).forEach { it.isEnabled = !on }
+        listOf(user, pass, dns, serverView, codeField).forEach { it.isEnabled = !on }
     }
 }

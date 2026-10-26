@@ -56,6 +56,11 @@ object Prefs {
     var activeBase: String
         get() = str("active_base")
         set(v) = put("active_base", v)
+    /** Código de revenda digitado no login (quando o APK não traz um). */
+    var resellerCode: String
+        get() = str("reseller_code")
+        set(v) = put("reseller_code", v)
+
     /** DNS digitada manualmente (quando o painel não tem servidores). */
     var customDns: String
         get() = str("custom_dns")
