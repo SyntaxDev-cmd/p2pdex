@@ -105,13 +105,15 @@ class LivePage(act: MainActivity, id: String, private val mode: String) : Page(a
         } }
         view.findViewById<ImageView>(R.id.btnFull).apply {
             background = roundBg()
+            imageTintList = ColorStateList.valueOf(Color.WHITE)
+            Ui.focusZoom(this, 1.08f)
             setOnClickListener { openFull() }
         }
         btnFav.background = roundBg()
-        view.findViewById<TextView>(R.id.btnGuide).apply {
-            background = Ui.button(act, false)
-            setTextColor(Ui.textColors(Ui.text, Ui.focusText))
-            Ui.focusZoom(this, 1.04f)
+        view.findViewById<ImageView>(R.id.btnGuide).apply {
+            background = roundBg()
+            imageTintList = ColorStateList.valueOf(Color.WHITE)
+            Ui.focusZoom(this, 1.08f)
             setOnClickListener { openGuide() }
         }
         btnFav.setOnClickListener { playing?.let { m -> toggleFav(m) } }
