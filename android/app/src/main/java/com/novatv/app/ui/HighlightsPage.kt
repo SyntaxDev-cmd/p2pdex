@@ -240,11 +240,8 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
             kinds().map { k -> async { withTimeoutOrNull(STEP_TIMEOUT) { runCatching { Repo.categories(k) }.getOrNull() }.orEmpty() } }
                 .flatMap { it.await() }
         }.filter { !it.locked && it.special == null }
-        val found = services.mapNotNull { st ->
-            val list = cats.filter { c -> Repo.matches(c.name, st.keys) }
-            if (list.isEmpty()) null else st to list
-        }
-        if (found.isEmpty()) return
+        // todos aparecem: com categorias próprias abre a categoria; sem elas, o app monta a lista pelo TMDB
+        val found = services.map { st -> st to cats.filter { c -> Repo.matches(c.name, st.keys) } }
         box.removeAllViews()
         box.addView(title(PanelConfig.current.streamingsTitle, null))
         val row = LinearLayout(act).apply {
@@ -311,7 +308,20 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
     private fun openStreaming(name: String, list: List<Category>) {
         fun open(c: Category) = act.openCategory(if (c.kind == Kind.SERIES) "series" else "movies", c)
         if (list.size == 1) { open(list[0]); return }
-        Dialogs.choose(act, name, list.map { (if (it.kind == Kind.SERIES) "Séries · " else "Filmes · ") + it.name }) { open(list[it]) }
+        if (list.size > 1) {
+            Dialogs.choose(act, name, list.map { (if (it.kind == Kind.SERIES) "Séries · " else "Filmes · ") + it.name }) { open(list[it]) }
+            return
+        }
+        // sem categoria com o nome do serviço: lista o que está nele (TMDB) e existe no catálogo do cliente
+        val ids = Tmdb.providerIds(name)
+        if (!Tmdb.enabled || ids.isEmpty()) {
+            Dialogs.toast(act, "Nenhum conteúdo de $name na sua lista")
+            return
+        }
+        val ks = kinds()
+        fun virtual(k: Kind) = Category("stream:$ids", "$name · " + if (k == Kind.SERIES) "Séries" else "Filmes", k, special = "stream:$ids")
+        if (ks.size == 1) open(virtual(ks[0]))
+        else Dialogs.choose(act, name, listOf("Filmes", "Séries")) { open(virtual(if (it == 1) Kind.SERIES else Kind.MOVIE)) }
     }
 
     private fun showEmpty(msg: String) {

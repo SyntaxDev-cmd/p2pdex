@@ -68,7 +68,7 @@ object Repo {
             scope.launch {
                 try {
                     val p = create(s, user, pass)
-                    val acc = p.login()
+                    val acc = kotlinx.coroutines.withTimeout(35_000) { p.login() }
                     winner.complete(Triple(s, p, acc))
                 } catch (e: Exception) {
                     synchronized(errors) {
@@ -204,6 +204,8 @@ object Repo {
             sp == "fav" -> Prefs.favorites(c.kind)
             sp == "recent" -> Prefs.recents()
             // categorias virtuais usadas pelos atalhos da tela inicial
+            // streaming sem categoria própria: o que está no serviço (TMDB) e existe na lista do cliente
+            sp != null && sp.startsWith("stream:") -> cached("items:${c.kind}:$sp") { Tmdb.providerInCatalog(sp.removePrefix("stream:"), c.kind == Kind.SERIES) }
             sp == "new" -> searchIndex(c.kind).map { it.second }.sortedByDescending { it.added }.take(200)
             sp != null && sp.startsWith("year:") -> {
                 val y = sp.removePrefix("year:")

@@ -207,8 +207,12 @@ class XtreamProvider(
         val jobs: List<Job> = candidates.map { b ->
             scope.launch {
                 try {
-                    val (acc, post) = attempt(b, u)
+                    // cada endereço tem no máximo 15 s (um https que não responde não segura o login)
+                    val (acc, post) = kotlinx.coroutines.withTimeout(15_000) { attempt(b, u) }
                     winner.complete(Triple(b, acc, post))
+                } catch (e: AuthException) {
+                    // o servidor respondeu "senha errada": não adianta esperar os outros endereços
+                    winner.completeExceptionally(e)
                 } catch (e: Exception) {
                     synchronized(errors) {
                         errors.add(e)

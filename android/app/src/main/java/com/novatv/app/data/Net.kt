@@ -82,6 +82,10 @@ object Net {
             .includeIPv6(false)
             .build()
 
+    /** IPv4 primeiro: muita rede doméstica anuncia IPv6 que não funciona e cada tentativa custa segundos. */
+    private fun ipv4First(list: List<InetAddress>): List<InetAddress> =
+        list.sortedBy { if (it is java.net.Inet4Address) 0 else 1 }
+
     /** DNS do aparelho primeiro; se falhar (bloqueio, domínio novo), tenta o DNS seguro. */
     private class FallbackDns(private val secure: List<Dns>) : Dns {
         private val cache = java.util.concurrent.ConcurrentHashMap<String, List<InetAddress>>()
@@ -94,13 +98,14 @@ object Net {
                 null
             }
             // 0.0.0.0 / 127.x = domínio bloqueado pela operadora
-            if (first != null && first.isNotEmpty() && first.none { it.isAnyLocalAddress || it.isLoopbackAddress }) return first
+            if (first != null && first.isNotEmpty() && first.none { it.isAnyLocalAddress || it.isLoopbackAddress }) return Net.ipv4First(first)
             for (d in secure) {
                 try {
                     val r = d.lookup(hostname)
                     if (r.isNotEmpty()) {
-                        cache[hostname] = r
-                        return r
+                        val sorted = Net.ipv4First(r)
+                        cache[hostname] = sorted
+                        return sorted
                     }
                 } catch (_: Exception) {
                 }
@@ -113,7 +118,7 @@ object Net {
     /** Explica um erro de rede em português (aparece no login para facilitar o suporte). */
     fun describe(e: Throwable): String = when (e) {
         is UnknownHostException -> "endereço não encontrado (DNS)"
-        is java.net.SocketTimeoutException -> "o servidor demorou demais para responder"
+        is java.net.SocketTimeoutException, is kotlinx.coroutines.TimeoutCancellationException -> "o servidor demorou demais para responder"
         is java.net.ConnectException -> "o servidor recusou a conexão"
         is javax.net.ssl.SSLException -> "falha de segurança HTTPS (certificado)"
         else -> e.message?.takeIf { it.isNotBlank() } ?: e.javaClass.simpleName
