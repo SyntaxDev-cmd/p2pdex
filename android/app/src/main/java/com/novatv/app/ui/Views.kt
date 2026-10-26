@@ -21,8 +21,19 @@ class AspectFrame @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? =
         }
     }
 
+    /** Altura fixa em px (ignora a proporção). 0 = usa a proporção. */
+    var fixedHeight: Int = 0
+        set(v) {
+            field = v
+            requestLayout()
+        }
+
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val w = MeasureSpec.getSize(widthMeasureSpec)
+        if (fixedHeight > 0) {
+            super.onMeasure(MeasureSpec.makeMeasureSpec(w, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(fixedHeight, MeasureSpec.EXACTLY))
+            return
+        }
         val h = (w * ratio).toInt()
         val hMode = MeasureSpec.getMode(heightMeasureSpec)
         val hMax = MeasureSpec.getSize(heightMeasureSpec)

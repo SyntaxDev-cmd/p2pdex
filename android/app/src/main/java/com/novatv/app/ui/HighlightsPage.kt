@@ -211,34 +211,44 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
         }
     }
 
-    /** Serviço de streaming: logo (opcional), cores e palavras que aparecem no nome das categorias. */
-    private data class Streaming(val label: String, val logo: String, val bg: Int, val fg: Int, val keys: List<String>)
 
     private fun color(hex: String, def: Int): Int = runCatching { Color.parseColor(hex) }.getOrDefault(def)
 
     /** Lista do painel (Streamings no admin); sem painel novo, usa a lista padrão. */
-    private fun streamingList(): List<Streaming> {
+    private fun streamingList(): List<StreamService> {
         val cfg = PanelConfig.current
         if (!cfg.streamingsEnabled) return emptyList()
         cfg.streamings?.let { list ->
-            return list.map { Streaming(it.name, it.logo, color(it.color, Color.WHITE), color(it.textColor, Color.BLACK), it.keywords.ifEmpty { listOf(it.name) }) }
+            return list.map { StreamService(it.name, it.logo, color(it.color, Color.WHITE), color(it.textColor, Color.BLACK), it.keywords.ifEmpty { listOf(it.name) }) }
         }
         return listOf(
-            Streaming("Netflix", "", Color.BLACK, 0xFFE50914.toInt(), listOf("netflix")),
-            Streaming("Globoplay", "", 0xFFFF3D2E.toInt(), Color.WHITE, listOf("globoplay", "globo play")),
-            Streaming("Prime Video", "", 0xFF1A98FF.toInt(), Color.WHITE, listOf("prime video", "amazon")),
-            Streaming("Disney+", "", 0xFF0B1E5B.toInt(), Color.WHITE, listOf("disney")),
-            Streaming("HBO Max", "", Color.WHITE, Color.BLACK, listOf("hbo", "max")),
-            Streaming("Paramount+", "", 0xFF0064FF.toInt(), Color.WHITE, listOf("paramount")),
-            Streaming("Crunchyroll", "", 0xFFF47521.toInt(), Color.WHITE, listOf("crunchyroll")),
-            Streaming("Apple TV+", "", 0xFF111111.toInt(), Color.WHITE, listOf("apple")),
-            Streaming("Star+", "", 0xFF2A1A5E.toInt(), Color.WHITE, listOf("star+", "star plus")),
-            Streaming("Discovery+", "", 0xFF0A5BFF.toInt(), Color.WHITE, listOf("discovery")),
+            StreamService("Netflix", "", Color.BLACK, 0xFFE50914.toInt(), listOf("netflix")),
+            StreamService("Globoplay", "", 0xFFFF3D2E.toInt(), Color.WHITE, listOf("globoplay", "globo play")),
+            StreamService("Prime Video", "", 0xFF1A98FF.toInt(), Color.WHITE, listOf("prime video", "amazon")),
+            StreamService("Disney+", "", 0xFF0B1E5B.toInt(), Color.WHITE, listOf("disney")),
+            StreamService("HBO Max", "", Color.WHITE, Color.BLACK, listOf("hbo", "max")),
+            StreamService("Paramount+", "", 0xFF0064FF.toInt(), Color.WHITE, listOf("paramount")),
+            StreamService("Crunchyroll", "", 0xFFF47521.toInt(), Color.WHITE, listOf("crunchyroll")),
+            StreamService("Apple TV+", "", 0xFF111111.toInt(), Color.WHITE, listOf("apple")),
+            StreamService("Star+", "", 0xFF2A1A5E.toInt(), Color.WHITE, listOf("star+", "star plus")),
+            StreamService("Discovery+", "", 0xFF0A5BFF.toInt(), Color.WHITE, listOf("discovery")),
         )
     }
 
     /** Mostra só os streamings que existem na lista do cliente (categorias com o nome do serviço). */
     /** Círculos "fantasma" enquanto as categorias chegam (o espaço já fica reservado). */
+    /**
+     * Altura do destaque para a tela inicial caber inteira (destaque + atalhos + streamings).
+     * 0 = usa a proporção normal (celular em pé ou abas Filmes/Séries).
+     */
+    private fun fitHeroHeight(): Int {
+        if (portrait || kind != null || streamingList().isEmpty()) return 0
+        val avail = act.pagesContainer.height.takeIf { it > 0 } ?: (act.resources.displayMetrics.heightPixels - Ui.dp(act, 130))
+        val streams = Ui.dp(act, STREAM_BIG + 88)          // título + círculo + nome
+        val chrome = Ui.dp(act, 4 + 14 + 10 + TILE_H + 8)  // margens + atalhos
+        return (avail - streams - chrome).coerceIn(Ui.dp(act, 150), Ui.dp(act, 460))
+    }
+
     private fun streamPlaceholder(): View {
         val row = LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL; setPadding(Ui.dp(act, 4), Ui.dp(act, 4), 0, Ui.dp(act, 4)) }
         val size = Ui.dp(act, 62)
@@ -263,7 +273,7 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
             clipToPadding = false
             setPadding(Ui.dp(act, 8), Ui.dp(act, 8), Ui.dp(act, 24), Ui.dp(act, 12))
         }
-        val size = Ui.dp(act, if (big) (if (portrait) 76 else 96) else if (portrait) 66 else 78)
+        val size = Ui.dp(act, if (big) (if (portrait) 76 else STREAM_BIG) else if (portrait) 66 else 78)
         services.forEach { st ->
             val circle = runCatching { streamingCircle(st, size) }.getOrNull() ?: return@forEach
             if (big) {
@@ -294,7 +304,7 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
     }
 
     /** Círculo com a logo (ou o nome escrito, se o painel não tiver logo). */
-    private fun streamingCircle(st: Streaming, size: Int): View {
+    private fun streamingCircle(st: StreamService, size: Int): View {
         val frame = FrameLayout(act).apply {
             isFocusable = true
             isClickable = true
@@ -311,7 +321,7 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
                 override fun getOutline(view: View, outline: android.graphics.Outline) = outline.setOval(0, 0, view.width, view.height)
             }
             clipToOutline = true
-            setOnClickListener { openStreaming(st) }
+            setOnClickListener { act.openStreaming(st) }
         }
         val name = TextView(act).apply {
             text = st.label
@@ -334,33 +344,6 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
         }
         Ui.focusZoom(frame, 1.12f, bouncy = true)
         return frame
-    }
-
-    private fun openStreaming(st: Streaming) {
-        act.launch {
-            val cats = kinds().flatMap { k -> runCatching { withTimeoutOrNull(STEP_TIMEOUT) { Repo.categories(k) } }.getOrNull().orEmpty() }
-                .filter { !it.locked && it.special == null && Repo.matches(it.name, st.keys) }
-            openStreaming(st.label, cats)
-        }
-    }
-
-    private fun openStreaming(name: String, list: List<Category>) {
-        fun open(c: Category) = act.openCategory(if (c.kind == Kind.SERIES) "series" else "movies", c)
-        if (list.size == 1) { open(list[0]); return }
-        if (list.size > 1) {
-            Dialogs.choose(act, name, list.map { (if (it.kind == Kind.SERIES) "Séries · " else "Filmes · ") + it.name }) { open(list[it]) }
-            return
-        }
-        // sem categoria com o nome do serviço: lista o que está nele (TMDB) e existe no catálogo do cliente
-        val ids = Tmdb.providerIds(name)
-        if (!Tmdb.enabled || ids.isEmpty()) {
-            Dialogs.toast(act, "Nenhum título do $name encontrado na sua lista")
-            return
-        }
-        val ks = kinds()
-        fun virtual(k: Kind) = Category("stream:$ids", "$name · " + if (k == Kind.SERIES) "Séries" else "Filmes", k, special = "stream:$ids")
-        if (ks.size == 1) open(virtual(ks[0]))
-        else Dialogs.choose(act, name, listOf("Filmes", "Séries")) { open(virtual(if (it == 1) Kind.SERIES else Kind.MOVIE)) }
     }
 
     private fun showEmpty(msg: String) {
@@ -537,6 +520,9 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
 
         // destaque grande
         val heroFrame = AspectFrame(act).apply { ratio = if (portrait) 0.56f else 0.5f }
+        // TV / deitado: destaque na medida para os streamings caberem sem rolar
+        val fitH = fitHeroHeight()
+        if (fitH > 0) heroFrame.fixedHeight = fitH
         heroFrame.isFocusable = true
         heroFrame.isClickable = true
         heroFrame.background = Ui.rounded(Ui.surface, r)
@@ -556,6 +542,10 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
             maxLines = 2
             ellipsize = android.text.TextUtils.TruncateAt.END
             setShadowLayer(8f, 0f, 2f, Color.BLACK)
+        }
+        if (fitH in 1 until Ui.dp(act, 210)) {
+            heroTitle.maxLines = 1
+            heroTitle.textSize = 24f
         }
         val heroSub = TextView(act).apply { textSize = 14f; setTextColor(Ui.withAlpha(Color.WHITE, 220)); maxLines = 1 }
         val heroCta = TextView(act).apply {
@@ -632,6 +622,8 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
     private companion object {
         const val STEP_TIMEOUT = 25_000L
         const val TRENDING_TIMEOUT = 60_000L
+        const val STREAM_BIG = 70
+        const val TILE_H = 62
     }
 
     private fun startRotation() {

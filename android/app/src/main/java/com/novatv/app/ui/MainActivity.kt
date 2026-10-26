@@ -48,6 +48,9 @@ class MainActivity : BaseActivity() {
     private val bottomViews = LinkedHashMap<String, View>()
     private lateinit var backdrop: SectionBackdrop
     private var current: Page? = null
+    /** Tela aberta por cima da aba (ex.: streaming). Voltar fecha e retorna à aba. */
+    private var overlay: Page? = null
+    private val active: Page? get() = overlay ?: current
     private var currentTab = ""
     private var tabJob: Job? = null
     private var backAt = 0L
@@ -168,7 +171,7 @@ class MainActivity : BaseActivity() {
                 letterSpacing = 0.03f
                 setOnClickListener { switchTab(t.id) }
                 setOnKeyListener { _, code, ev ->
-                    if (ev.action == KeyEvent.ACTION_DOWN && code == KeyEvent.KEYCODE_DPAD_DOWN) current?.focusContent() ?: false else false
+                    if (ev.action == KeyEvent.ACTION_DOWN && code == KeyEvent.KEYCODE_DPAD_DOWN) active?.focusContent() ?: false else false
                 }
             }
             if (t.icon.isNotBlank()) loadTabIcon(tv, t.icon, t.iconOnly)
@@ -317,7 +320,11 @@ class MainActivity : BaseActivity() {
     }
 
     fun switchTab(id: String, focusTab: Boolean = false) {
-        if (id == currentTab) return
+        if (id == currentTab) {
+            // tocar na aba atual com uma tela por cima: fecha e volta para a aba
+            if (overlay != null) closeOverlay()
+            return
+        }
         val cfg = PanelConfig.current
         if (currentTab == "kids" && cfg.kidsLock) {
             Dialogs.pin(this, "PIN para sair do modo Kids") { doSwitch(id, focusTab) }
@@ -328,6 +335,7 @@ class MainActivity : BaseActivity() {
     }
 
     private fun doSwitch(id: String, focusTab: Boolean) {
+        closeOverlay(restore = false)
         current?.let {
             it.onHide()
             it.view.visibility = View.GONE
@@ -381,6 +389,50 @@ class MainActivity : BaseActivity() {
     fun goToTab(id: String) {
         if (tabViews.containsKey(id)) switchTab(id, focusTab = false) else Dialogs.toast(this, "Seção indisponível")
         pages[id]?.focusContent()
+    }
+
+    /** Aba usada como "tela inicial" (Início, ou a primeira aba). */
+    private fun homeTab(): String? = when {
+        Profiles.current?.kids == true && tabViews.containsKey("kids") -> "kids"
+        tabViews.containsKey("highlights") -> "highlights"
+        else -> tabViews.keys.firstOrNull()
+    }
+
+    /** Abre a tela de um streaming por cima da aba atual. */
+    fun openStreaming(service: StreamService) {
+        openOverlay(StreamingPage(this, service))
+    }
+
+    private fun openOverlay(page: Page) {
+        closeOverlay(restore = false)
+        current?.let {
+            it.onHide()
+            it.view.visibility = View.GONE
+        }
+        overlay = page
+        pagesContainer.addView(page.view, FrameLayout.LayoutParams(-1, -1))
+        page.view.alpha = 0f
+        page.view.translationY = Ui.dp(this, 16).toFloat()
+        page.view.animate().alpha(1f).translationY(0f).setDuration(220).start()
+        page.onShow()
+        page.view.post { page.focusContent() }
+    }
+
+    /** Fecha a tela por cima (se houver) e mostra de novo a aba. true se fechou algo. */
+    fun closeOverlay(restore: Boolean = true): Boolean {
+        val o = overlay ?: return false
+        overlay = null
+        o.onHide()
+        o.onDestroy()
+        pagesContainer.removeView(o.view)
+        if (restore) current?.let { page ->
+            page.view.visibility = View.VISIBLE
+            page.view.alpha = 0f
+            page.view.animate().alpha(1f).setDuration(180).start()
+            page.onShow()
+            page.view.post { if (!page.focusContent()) tabViews[currentTab]?.requestFocus() }
+        }
+        return true
     }
 
     /** Abre a aba de filmes/séries já numa categoria (inclusive virtuais: ano, recentes). */
@@ -447,7 +499,10 @@ class MainActivity : BaseActivity() {
             firstStart = false
             return
         }
-        if (::pagesContainer.isInitialized && current != null) {
+        if (::pagesContainer.isInitialized && overlay != null) {
+            fromPlayer = false
+            overlay?.onShow()
+        } else if (::pagesContainer.isInitialized && current != null) {
             val page = current
             if (fromPlayer && page is LivePage) {
                 fromPlayer = false
@@ -460,11 +515,12 @@ class MainActivity : BaseActivity() {
     }
 
     override fun onStop() {
-        current?.onHide()
+        active?.onHide()
         super.onStop()
     }
 
     override fun onDestroy() {
+        overlay?.onDestroy()
         pages.values.forEach { it.onDestroy() }
         super.onDestroy()
     }
@@ -490,10 +546,21 @@ class MainActivity : BaseActivity() {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
+        // 1) tela por cima (streaming): fecha e volta ao Início
+        if (overlay?.onBack() == true) return
+        if (closeOverlay()) return
+        // 2) a aba trata o voltar (ex.: sair da categoria, fechar lista)
         if (current?.onBack() == true) return
+        // 3) foco no conteúdo: sobe para o menu de abas
         val tab = tabViews[currentTab]
-        if (tab != null && !tabsBox.hasFocus()) {
+        if (tab != null && !tabsBox.hasFocus() && Ui.isTv) {
             tab.requestFocus()
+            return
+        }
+        // 4) em outra aba: volta para a tela inicial
+        val home = homeTab()
+        if (home != null && currentTab != home) {
+            switchTab(home, focusTab = Ui.isTv)
             return
         }
         if (System.currentTimeMillis() - backAt < 2000) {
