@@ -99,6 +99,14 @@ class SettingsActivity : BaseActivity() {
             startActivity(Intent(this, ProfilesActivity::class.java).putExtra("manage", true))
         }
 
+        row("Tema do Kids", Sections.kidsThemes.firstOrNull { it.key == Prefs.kidsTheme }?.label?.trim() ?: Sections.kidsThemes[0].label.trim()) {
+            val themes = Sections.kidsThemes
+            Dialogs.choose(this, "🎨 Tema do Kids", themes.map { it.label }, themes.indexOfFirst { it.key == Prefs.kidsTheme }.coerceAtLeast(0)) {
+                Prefs.kidsTheme = themes[it].key
+                render()
+            }
+        }
+
         section("Player")
         row("Player de vídeo", if (Prefs.playerMode == "external") "Externo (VLC, MX Player...)" else "Interno (recomendado)") {
             Dialogs.choose(this, "Player de vídeo", listOf("Interno (recomendado)", "Externo (VLC, MX Player...)"),

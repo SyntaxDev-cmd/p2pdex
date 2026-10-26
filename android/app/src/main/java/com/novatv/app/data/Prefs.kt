@@ -105,6 +105,11 @@ object Prefs {
     /** Dados separados por conta e por perfil. */
     private fun scoped(k: String) = "${k}_${serverId}_${username}_${Profiles.currentId}"
 
+    /** Tema da seção Kids deste perfil: "" (arco-íris), "boys" ou "girls". */
+    var kidsTheme: String
+        get() = str(scoped("kids_theme"))
+        set(v) = put(scoped("kids_theme"), v)
+
     fun clearHistory() {
         sp.edit().remove(scoped("resume")).remove(scoped("recent")).apply()
     }

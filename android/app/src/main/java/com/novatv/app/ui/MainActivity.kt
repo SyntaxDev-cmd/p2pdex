@@ -56,6 +56,8 @@ class MainActivity : BaseActivity() {
     private var backAt = 0L
     private var fromPlayer = false
     private var firstStart = true
+    /** Tema com que a aba Kids foi montada (se mudar nas configurações, a aba é refeita). */
+    private var kidsThemeBuilt: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -361,7 +363,7 @@ class MainActivity : BaseActivity() {
     private fun applySection(id: String) {
         val style = if (Profiles.current?.kids == true) Sections.kids else Sections.of(id)
         if (style != null) {
-            if (backdrop.style?.id != style.id) {
+            if (backdrop.style !== style) {
                 backdrop.alpha = 0f
                 backdrop.style = style
             }
@@ -372,13 +374,40 @@ class MainActivity : BaseActivity() {
         }
     }
 
+    /** Escolha do tema Kids (meninos / meninas / arco-íris). Recria a aba com as novas cores. */
+    fun chooseKidsTheme() {
+        val themes = Sections.kidsThemes
+        val sel = themes.indexOfFirst { it.key == Prefs.kidsTheme }.coerceAtLeast(0)
+        Dialogs.choose(this, "🎨 Tema do Kids", themes.map { it.label }, sel) { i ->
+            if (i == sel) return@choose
+            Prefs.kidsTheme = themes[i].key
+            rebuildPage("kids")
+            Dialogs.toast(this, "Tema aplicado!")
+        }
+    }
+
+    private fun rebuildPage(id: String) {
+        val old = pages.remove(id) ?: return
+        old.onHide()
+        old.onDestroy()
+        pagesContainer.removeView(old.view)
+        if (current === old) {
+            current = null
+            currentTab = ""
+            doSwitch(id, focusTab = false)
+            pages[id]?.focusContent()
+        } else if (Profiles.current?.kids == true) {
+            applySection(currentTab)
+        }
+    }
+
     private fun createPage(id: String): Page = when (id) {
         "tv" -> LivePage(this, id, "tv")
         "sports" -> if (PanelConfig.current.gamesEnabled) GamesPage(this, id) else LivePage(this, id, "sports")
         "highlights" -> HighlightsPage(this, id)
         "movies" -> GridPage(this, id, "movies")
         "series" -> GridPage(this, id, "series")
-        "kids" -> GridPage(this, id, "kids")
+        "kids" -> GridPage(this, id, "kids").also { kidsThemeBuilt = Prefs.kidsTheme }
         "anime" -> GridPage(this, id, "anime")
         "favorites" -> GridPage(this, id, "favorites")
         else -> GridPage(this, id, "movies")
@@ -501,6 +530,9 @@ class MainActivity : BaseActivity() {
         if (firstStart) {
             firstStart = false
             return
+        }
+        if (::pagesContainer.isInitialized && pages.containsKey("kids") && kidsThemeBuilt != Prefs.kidsTheme) {
+            rebuildPage("kids")
         }
         if (::pagesContainer.isInitialized && overlay != null) {
             fromPlayer = false
