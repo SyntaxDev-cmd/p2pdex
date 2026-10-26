@@ -160,6 +160,13 @@ class XtreamProvider(
 
     private suspend fun fetchLogin(b: String, u: String, post: Boolean): Account {
         val text = Net.execute(Net.api, apiRequest(b, "", emptyMap(), u, post)).use { resp ->
+            if (resp.code in 400..599) {
+                // Cloudflare: "error code: 1014" = domínio do servidor mal configurado/fora do ar
+                val body = runCatching { resp.peekBody(2048).string() }.getOrDefault("")
+                Regex("error code: (\\d{3,4})").find(body)?.let {
+                    throw IOException("o domínio ${Uri.parse(b).host} está fora do ar na Cloudflare (erro ${it.groupValues[1]}). Peça ao fornecedor do P2P o endereço correto da API")
+                }
+            }
             when {
                 resp.code == 401 -> throw AuthException("Usuário ou senha inválidos")
                 resp.code == 404 || resp.code == 405 -> throw NotXtreamException("a API não existe nesse endereço (HTTP ${resp.code})")

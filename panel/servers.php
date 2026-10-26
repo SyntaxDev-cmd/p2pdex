@@ -126,6 +126,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } else {
                     // mostra o começo da resposta para descobrir o formato da API
                     $snippet = trim(preg_replace('/\s+/', ' ', strip_tags(mb_substr((string)$r['body'], 0, 400))));
+                    if (preg_match('/error code: (\d{3,4})/', (string)$r['body'], $cf)) {
+                        $snippet = 'Cloudflare erro ' . $cf[1] . ': o domínio está mal configurado/fora do ar. Peça ao fornecedor o endereço correto da API.';
+                    }
                     $info = 'HTTP ' . $r['code'] . ($r['error'] ? ' · ' . $r['error'] : '') . ' · resposta não é API Xtream'
                         . ($snippet !== '' ? ' · resposta: "' . mb_substr($snippet, 0, 160) . '"' : ' · resposta vazia');
                 }
