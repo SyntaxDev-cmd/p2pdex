@@ -183,7 +183,7 @@ class StreamingPage(act: MainActivity, private val service: StreamService) : Pag
                 filter = kind
                 buildFilters()
                 apply()
-                filters.getChildAt(listOf(null, Kind.MOVIE, Kind.SERIES).indexOf(kind).coerceAtMost(filters.childCount - 1))?.requestFocus()
+                this@StreamingPage.filters.let { f -> f.getChildAt(listOf(null, Kind.MOVIE, Kind.SERIES).indexOf(kind).coerceAtMost(f.childCount - 1)) }?.requestFocus()
             }
         }
         Ui.focusZoom(tv, 1.06f)
