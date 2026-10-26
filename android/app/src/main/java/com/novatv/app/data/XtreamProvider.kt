@@ -172,6 +172,9 @@ class XtreamProvider(
                 Regex("error code: (\\d{3,4})").find(body)?.let {
                     throw IOException("${Uri.parse(b).scheme}://${Uri.parse(b).host} está fora do ar na Cloudflare (erro ${it.groupValues[1]})")
                 }
+                if (body.contains("you have been blocked", true) || body.contains("Attention Required", true)) {
+                    throw IOException("o firewall (Cloudflare) do servidor bloqueou apps de terceiros. O fornecedor precisa liberar o acesso ou informar o endereço da API")
+                }
                 if (body.contains("Just a moment", true) || body.contains("cf-chl", true) || body.contains("challenge-platform", true)) {
                     throw IOException("a Cloudflare do servidor pediu verificação anti-robô (o dono do servidor precisa liberar o acesso de apps à API)")
                 }

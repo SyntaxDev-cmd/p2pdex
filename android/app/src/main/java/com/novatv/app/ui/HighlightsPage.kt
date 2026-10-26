@@ -171,6 +171,10 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
                 val features = baseFeatures(rowItems)
                 if (features.isNotEmpty()) column.addView(mosaic(features))
             }
+            // fileira de streamings (Netflix, Globoplay...) logo abaixo do destaque
+            val streamBox = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE; clipChildren = false; clipToPadding = false }
+            column.addView(streamBox, LinearLayout.LayoutParams(-1, -2))
+            launch { runCatching { fillStreamings(streamBox) }.onFailure { if (it is kotlinx.coroutines.CancellationException) throw it } }
             val resume = addRow("Continuar assistindo", resumeItems(), Kind.MOVIE)
             resumeRow = resume
             if (resume.second.itemCount == 0) resume.first.visibility = View.GONE
@@ -200,6 +204,82 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
                 launch { runCatching { addTrending() }.onFailure { if (it is kotlinx.coroutines.CancellationException) throw it } }
             }
         }
+    }
+
+    /** Serviço de streaming: cores da marca e palavras que aparecem no nome das categorias. */
+    private data class Streaming(val label: String, val bg1: Int, val bg2: Int, val fg: Int, val keys: List<String>)
+
+    private val streamings = listOf(
+        Streaming("NETFLIX", 0xFF141414.toInt(), 0xFF000000.toInt(), 0xFFE50914.toInt(), listOf("netflix")),
+        Streaming("globoplay", 0xFFFF5A36.toInt(), 0xFFE1061B.toInt(), Color.WHITE, listOf("globoplay", "globo play")),
+        Streaming("prime video", 0xFF1A98FF.toInt(), 0xFF0F5FBF.toInt(), Color.WHITE, listOf("prime video", "amazon", "prime")),
+        Streaming("Disney+", 0xFF113CCF.toInt(), 0xFF0A1F6B.toInt(), Color.WHITE, listOf("disney")),
+        Streaming("max", 0xFF2E2BD8.toInt(), 0xFF0B0A4A.toInt(), Color.WHITE, listOf("hbo", "max")),
+        Streaming("Paramount+", 0xFF0064FF.toInt(), 0xFF0033A0.toInt(), Color.WHITE, listOf("paramount")),
+        Streaming("Apple TV+", 0xFF2B2B2B.toInt(), 0xFF000000.toInt(), Color.WHITE, listOf("apple")),
+        Streaming("Star+", 0xFF2A1A5E.toInt(), 0xFF0E0A24.toInt(), Color.WHITE, listOf("star+", "star plus")),
+        Streaming("Crunchyroll", 0xFFFF8A1F.toInt(), 0xFFF47521.toInt(), Color.WHITE, listOf("crunchyroll")),
+        Streaming("discovery+", 0xFF0A5BFF.toInt(), 0xFF00227A.toInt(), Color.WHITE, listOf("discovery")),
+        Streaming("Univer", 0xFF7B2FF7.toInt(), 0xFF3E0E8F.toInt(), Color.WHITE, listOf("univer")),
+        Streaming("Looke", 0xFF00B5AD.toInt(), 0xFF006B66.toInt(), Color.WHITE, listOf("looke")),
+    )
+
+    /** Mostra só os streamings que existem na lista do cliente (categorias com o nome do serviço). */
+    private suspend fun fillStreamings(box: LinearLayout) {
+        val cats = coroutineScope {
+            kinds().map { k -> async { withTimeoutOrNull(STEP_TIMEOUT) { runCatching { Repo.categories(k) }.getOrNull() }.orEmpty() } }
+                .flatMap { it.await() }
+        }.filter { !it.locked && it.special == null }
+        val found = streamings.mapNotNull { st ->
+            val list = cats.filter { c -> val n = Repo.normalize(c.name); st.keys.any { k -> Repo.matches(n, listOf(k)) } }
+            if (list.isEmpty()) null else st to list
+        }
+        if (found.isEmpty()) return
+        box.removeAllViews()
+        box.addView(title("Streamings", null))
+        val row = LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL; clipChildren = false; clipToPadding = false
+            setPadding(Ui.dp(act, 6), Ui.dp(act, 6), Ui.dp(act, 24), Ui.dp(act, 10)) }
+        val size = Ui.dp(act, if (portrait) 64 else 76)
+        found.forEach { (st, list) ->
+            val circle = TextView(act).apply {
+                text = st.label
+                gravity = Gravity.CENTER
+                typeface = Typeface.DEFAULT_BOLD
+                textSize = if (st.label.length > 9) 10f else if (st.label.length > 6) 11.5f else 13f
+                setTextColor(st.fg)
+                maxLines = 2
+                setPadding(Ui.dp(act, 4), 0, Ui.dp(act, 4), 0)
+                isFocusable = true
+                isClickable = true
+                contentDescription = st.label
+                background = android.graphics.drawable.StateListDrawable().apply {
+                    fun oval(stroke: Int, w: Int) = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(st.bg1, st.bg2)).apply {
+                        shape = GradientDrawable.OVAL
+                        setStroke(w, stroke)
+                    }
+                    addState(intArrayOf(android.R.attr.state_focused), oval(Color.WHITE, Ui.dp(act, 3)))
+                    addState(intArrayOf(android.R.attr.state_pressed), oval(Color.WHITE, Ui.dp(act, 3)))
+                    addState(intArrayOf(), oval(Ui.withAlpha(Color.WHITE, 60), Ui.dp(act, 1)))
+                }
+                elevation = Ui.dp(act, 4).toFloat()
+                setOnClickListener { openStreaming(st.label, list) }
+            }
+            Ui.focusZoom(circle, 1.12f, bouncy = true)
+            row.addView(circle, LinearLayout.LayoutParams(size, size).apply { marginEnd = Ui.dp(act, if (portrait) 12 else 16) })
+        }
+        box.addView(SafeHorizontalScrollView(act).apply {
+            isHorizontalScrollBarEnabled = false
+            clipChildren = false
+            clipToPadding = false
+            addView(row)
+        }, LinearLayout.LayoutParams(-1, -2))
+        Ui.fadeIn(box)
+    }
+
+    private fun openStreaming(name: String, list: List<Category>) {
+        fun open(c: Category) = act.openCategory(if (c.kind == Kind.SERIES) "series" else "movies", c)
+        if (list.size == 1) { open(list[0]); return }
+        Dialogs.choose(act, name, list.map { (if (it.kind == Kind.SERIES) "Séries · " else "Filmes · ") + it.name }) { open(list[it]) }
     }
 
     private fun showEmpty(msg: String) {
