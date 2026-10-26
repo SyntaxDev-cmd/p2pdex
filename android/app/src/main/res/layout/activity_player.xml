@@ -10,7 +10,7 @@
         android:id="@+id/player"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        app:controller_show_timeout="4000"
+        app:show_timeout="4000"
         app:show_buffering="always"
         app:show_shuffle_button="false"
         app:show_subtitle_button="true" />
