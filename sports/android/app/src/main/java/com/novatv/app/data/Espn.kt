@@ -119,6 +119,14 @@ object Espn {
         League("bra.camp.paulista", "Paulistão"),
         League("bra.camp.carioca", "Carioca"),
         League("usa.1", "MLS"),
+        League("tur.1", "Turquia"),
+        League("ned.1", "Holanda"),
+        League("bel.1", "Bélgica"),
+        League("sco.1", "Escócia"),
+        League("mex.1", "México"),
+        League("sau.1", "Arábia Saudita"),
+        League("uefa.nations", "Nations League"),
+        League("conmebol.america", "Copa América"),
         League("fifa.world", "Copa do Mundo"),
     )
 
@@ -220,11 +228,50 @@ object Espn {
         )
     }
 
-    /** Jogos do dia em todas as ligas (em paralelo). Ao vivo primeiro, depois por horário. */
+    /**
+     * Jogos do dia: ESPN (placar ao vivo) + "Jogos do dia" do painel (ligas que a ESPN não
+     * cobre, como sub-20 e estaduais, já com os canais). Ao vivo primeiro, depois por horário.
+     */
     suspend fun day(dayOffset: Int = 0, list: List<League> = leagues): List<Match> = coroutineScope {
-        list.map { lg -> async { withTimeoutOrNull(20_000) { runCatching { scoreboard(lg, dayOffset) }.getOrNull() }.orEmpty() } }
+        val panel = if (dayOffset == 0) async { withTimeoutOrNull(20_000) { runCatching { Games.load() }.getOrNull() }.orEmpty() } else null
+        val espn = list.map { lg -> async { withTimeoutOrNull(20_000) { runCatching { scoreboard(lg, dayOffset) }.getOrNull() }.orEmpty() } }
             .flatMap { it.await() }
-            .sortedWith(compareBy<Match>({ if (it.live) 0 else if (it.state == "pre") 1 else 2 }, { it.start }))
+        val extra = panel?.await().orEmpty()
+            .filter { g -> g.home.isNotBlank() && g.away.isNotBlank() && espn.none { m -> sameGame(m, g) } }
+            .map { fromPanel(it) }
+        (espn + extra).sortedWith(compareBy<Match>({ if (it.live) 0 else if (it.state == "pre") 1 else 2 }, { it.start }))
+    }
+
+    private fun same(a: String, b: String): Boolean {
+        val x = Games.compact(a)
+        val y = Games.compact(b)
+        if (x.length < 3 || y.length < 3) return false
+        return x.contains(y) || y.contains(x) || x.take(5) == y.take(5)
+    }
+
+    private fun sameGame(m: Match, g: Game) =
+        (same(m.home.name, g.home) && same(m.away.name, g.away)) || (same(m.home.name, g.away) && same(m.away.name, g.home))
+
+    /** Jogo do painel no formato do app. */
+    private fun fromPanel(g: Game): Match {
+        val st = g.liveStatus()
+        val parts = g.score.split('-', 'x', 'X', '×').map { it.trim() }
+        val hs = parts.getOrNull(0).orEmpty()
+        val aws = parts.getOrNull(1).orEmpty()
+        val code = "panel:" + Games.compact(g.league).ifBlank { "outros" }
+        return Match(
+            id = "p" + g.id,
+            league = League(code, g.league.ifBlank { "Outros jogos" }),
+            leagueLogo = g.leagueLogo,
+            start = if (g.ts > 0) g.ts * 1000 else System.currentTimeMillis(),
+            state = when (st) { "live" -> "in"; "ended" -> "post"; else -> "pre" },
+            statusName = if (g.minute.contains("interv", true)) "STATUS_HALFTIME" else "",
+            clock = g.minute,
+            home = Team(g.home, g.home, "", g.homeLogo, hs, false),
+            away = Team(g.away, g.away, "", g.awayLogo, aws, false),
+            venue = "",
+            broadcasts = g.channels,
+        )
     }
 
     /** Notícias (ESPN Brasil, em português; se vier vazio, a versão internacional). */

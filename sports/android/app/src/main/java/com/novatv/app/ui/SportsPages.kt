@@ -397,6 +397,7 @@ class ScoresPage(act: MainActivity, id: String, private val mode: String) : Page
     private var all: List<Match> = emptyList()
     private var day = 0
     private var league = "all"
+    private var showingNext = false
     private var job: Job? = null
     private var tick: Job? = null
     private var loaded = false
@@ -482,7 +483,9 @@ class ScoresPage(act: MainActivity, id: String, private val mode: String) : Page
                 if (it is kotlinx.coroutines.CancellationException) throw it
                 all
             }
-            all = if (mode == "live") list.filter { it.live } else list
+            // AO VIVO: se não houver nenhum agora, mostra os próximos de hoje
+            showingNext = mode == "live" && list.none { it.live }
+            all = if (mode == "live") (if (showingNext) list.filter { it.state == "pre" } else list.filter { it.live }) else list
             loading.visibility = View.GONE
             loaded = true
             apply()
@@ -500,15 +503,18 @@ class ScoresPage(act: MainActivity, id: String, private val mode: String) : Page
         val byLeague = all.groupBy { it.league.code }
         val chips = mutableListOf("all" to "Todos (${all.size})")
         Espn.leagues.forEach { lg -> byLeague[lg.code]?.let { chips.add(lg.code to "${lg.name} (${it.size})") } }
+        // ligas que vieram do painel (sub-20, estaduais, outras)
+        byLeague.filterKeys { code -> Espn.leagues.none { it.code == code } }.forEach { (code, l) -> chips.add(code to "${l.first().league.name} (${l.size})") }
         if (league != "all" && byLeague[league] == null) league = "all"
         leagues.set(chips, league, dot = byLeague.filterValues { l -> l.any { it.live } }.keys)
         val list = if (league == "all") all else all.filter { it.league.code == league }
         adapter.submit(list)
         val live = all.count { it.live }
-        status.text = if (mode == "live") "●  $live jogos ao vivo agora · placar atualiza sozinho"
+        status.text = if (mode == "live" && showingNext) "Nenhum jogo ao vivo neste momento · próximos jogos de hoje"
+        else if (mode == "live") "●  $live ${if (live == 1) "jogo" else "jogos"} ao vivo agora · placar atualiza sozinho"
         else "⚽  ${all.size} jogos · ${if (live > 0) "$live ao vivo · " else ""}dados da ESPN"
         empty.visibility = if (list.isEmpty()) View.VISIBLE else View.GONE
-        empty.text = if (mode == "live") "Nenhum jogo ao vivo agora.\nVeja a agenda na aba JOGOS ou os canais esportivos."
+        empty.text = if (mode == "live") "Nenhum jogo ao vivo agora e nenhum outro previsto para hoje.\nVeja a agenda na aba JOGOS ou os canais esportivos."
         else "Nenhum jogo nas ligas acompanhadas neste dia."
     }
 }

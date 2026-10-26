@@ -39,9 +39,11 @@ class PanelConfig(val json: JSONObject) {
     val appName: String = app.optString("name").ifBlank { "NovaSports" }
     // sem imagem no painel, usa as imagens embutidas no APK (res/drawable-nodpi)
     val logo: String = app.optString("logo").ifBlank { AppConfig.logo }
-    val background: String = app.optString("background").ifBlank { AppConfig.background }
+    // app de esportes: só usa imagem de fundo se o painel novo mandar uma própria (senão, tema de gramado)
+    val background: String = (if (json.has("sports")) app.optString("background") else "").ifBlank { AppConfig.background }
     val backgroundMode: String =
-        if (app.optString("background").isBlank() && AppConfig.background.isNotEmpty()) "image"
+        if (!json.has("sports")) (if (AppConfig.background.isNotEmpty()) "image" else "gradient")
+        else if (app.optString("background").isBlank() && AppConfig.background.isNotEmpty()) "image"
         else app.optString("background_mode", "gradient")
     val splashText: String = app.optString("splash_text")
     val welcome: String = app.optString("welcome")
@@ -62,7 +64,15 @@ class PanelConfig(val json: JSONObject) {
     val tmdbToken: String = tmdb.optString("token").ifBlank { AppConfig.tmdbToken }
     val tmdbLanguage: String = tmdb.optString("language").ifBlank { AppConfig.tmdbLanguage }
 
-    fun color(key: String, def: String): String = theme.optString(key).ifBlank { def }
+    /** Cores do tema esportivo (usadas se o painel ainda não tiver o "App Esportes"). */
+    private val sportsTheme = mapOf(
+        "primary" to "#19C463", "accent" to "#B6FF3B", "bg1" to "#0B6B35", "bg2" to "#02160B",
+        "text2" to "#CFF5D9", "focus_text" to "#06210F",
+    )
+
+    fun color(key: String, def: String): String =
+        if (!json.has("sports")) sportsTheme[key] ?: theme.optString(key).ifBlank { def }
+        else theme.optString(key).ifBlank { sportsTheme[key] ?: def }
     val surfaceOpacity: Int = theme.optInt("surface_opacity", 35)
     val radius: Int = theme.optInt("radius", 12)
     val scale: Int = theme.optInt("scale", 100)
@@ -72,8 +82,8 @@ class PanelConfig(val json: JSONObject) {
     val tabs: List<Tab> = run {
         val labels = sportsObj.optJSONObject("labels")
         listOf(
-            "home" to "INÍCIO", "live" to "AO VIVO", "games" to "JOGOS", "channels" to "CANAIS",
-            "news" to "NOTÍCIAS", "table" to "TABELA", "favorites" to "FAVORITOS",
+            "home" to "🏠 INÍCIO", "live" to "🔴 AO VIVO", "games" to "📅 JOGOS", "channels" to "📺 CANAIS",
+            "news" to "📰 NOTÍCIAS", "table" to "🏆 TABELA", "favorites" to "⭐ FAVORITOS",
         ).map { (id, def) -> Tab(id, labels?.optString(id).orEmpty().ifBlank { def }, "", false) }
     }
 

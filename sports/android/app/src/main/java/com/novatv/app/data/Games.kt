@@ -19,6 +19,7 @@ data class Game(
     val score: String,
     /** minuto do jogo ao vivo ("40'") ou "Intervalo" */
     val minute: String = "",
+    val leagueLogo: String = "",
 ) {
     /** Recalcula o status no aparelho (a lista fica em cache). */
     fun liveStatus(now: Long = System.currentTimeMillis() / 1000): String = when {
@@ -65,6 +66,7 @@ object Games {
                     status = g.optString("status"),
                     score = g.optString("score"),
                     minute = g.optString("minute"),
+                    leagueLogo = g.optString("league_logo"),
                 )
             }
         }

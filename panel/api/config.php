@@ -203,6 +203,9 @@ try {
         $payload['app']['name'] = $s['sports_app_name'] ?: 'NovaSports';
         $payload['app']['logo'] = asset_url($s['sports_logo'] ?? '');
         $payload['app']['welcome'] = $s['sports_welcome'] ?? '';
+        // fundo próprio do app de esportes (tema de gramado), sem a imagem do NovaTV
+        $payload['app']['background'] = asset_url($s['sports_background'] ?? '');
+        $payload['app']['background_mode'] = ($s['sports_background'] ?? '') !== '' ? 'image' : 'gradient';
         foreach (['primary', 'accent', 'bg1', 'bg2', 'text2'] as $c) {
             $v = $s['sports_color_' . $c] ?? '';
             if (preg_match('/^#[0-9a-fA-F]{6}$/', $v)) $payload['theme'][$c] = $v;
