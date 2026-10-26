@@ -19,7 +19,8 @@ class App : Application(), ImageLoaderFactory {
         super.onCreate()
         instance = this
         CrashReporter.install(this)
-        installGuard()
+        // nos testes automáticos (Robolectric) a rede de segurança fica desligada
+        if (android.os.Build.FINGERPRINT != "robolectric") installGuard()
         Prefs.init(this)
         AppConfig.load(this)
         Net.init(this)

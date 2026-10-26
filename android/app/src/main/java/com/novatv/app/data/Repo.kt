@@ -106,6 +106,12 @@ object Repo {
         return loginAuto(Prefs.username, Prefs.password)
     }
 
+    /** Só para testes automáticos: usa um provedor falso, sem rede. */
+    fun setProviderForTest(p: Provider?) {
+        provider = p
+        clear()
+    }
+
     fun logout() {
         provider = null
         account = null
