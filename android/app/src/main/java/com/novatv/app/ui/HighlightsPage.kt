@@ -126,7 +126,6 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
         heroFeatures.clear()
         heroIndex = 0
         rotate = null
-        heroStreamSlot = null
         loading.visibility = View.GONE
         val skeleton = skeleton()
         column.addView(skeleton)
@@ -173,11 +172,12 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
                 if (features.isNotEmpty()) column.addView(mosaic(features))
             }
             // fileira de streamings (Netflix, Globoplay...) logo abaixo do destaque
-            val slot = heroStreamSlot
-            val streamBox = slot ?: LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE; clipChildren = false; clipToPadding = false }
-                .also { column.addView(it, LinearLayout.LayoutParams(-1, -2)) }
-            if (slot != null) slot.addView(streamPlaceholder())
-            launch { runCatching { fillStreamings(streamBox, compact = slot != null) }.onFailure { if (it is kotlinx.coroutines.CancellationException) throw it } }
+            // tela inicial: no lugar das fileiras de capas, os streamings (ícones grandes com o nome)
+            val homeStreams = kind == null && streamingList().isNotEmpty()
+            val streamBox = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; clipChildren = false; clipToPadding = false }
+            column.addView(streamBox, LinearLayout.LayoutParams(-1, -2))
+            if (homeStreams) streamBox.addView(streamPlaceholder()) else streamBox.visibility = View.GONE
+            launch { runCatching { fillStreamings(streamBox, big = homeStreams) }.onFailure { if (it is kotlinx.coroutines.CancellationException) throw it } }
             val resume = addRow("Continuar assistindo", resumeItems(), Kind.MOVIE)
             resumeRow = resume
             if (resume.second.itemCount == 0) resume.first.visibility = View.GONE
@@ -190,14 +190,14 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
             var rowsShown = 0
             val repeated = rowItems.filter { it.second.isNotEmpty() }.groupingBy { Repo.normalize(it.first.name).trim() }.eachCount()
             for ((c, items) in rowItems) {
-                if (items.isEmpty()) continue
+                if (items.isEmpty() || homeStreams) continue
                 // "Lançamentos" de filmes e de séries: deixa claro qual é qual
                 val label = if ((repeated[Repo.normalize(c.name).trim()] ?: 0) > 1) c.name + if (c.kind == Kind.SERIES) " · Séries" else " · Filmes" else c.name
                 addRow(label, items.take(30).map { PosterAdapter.from(it) }, c.kind, c)
                 rowsShown++
             }
             loaded = true
-            if (rowsShown == 0 && hero == null) {
+            if (rowsShown == 0 && hero == null && !homeStreams) {
                 val e = error
                 if (e is AuthException) act.handleError(e)
                 showEmpty(if (e != null) "Não foi possível carregar o conteúdo agora." else "Nenhum destaque disponível.")
@@ -207,7 +207,7 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
             // 3) extras do TMDB em segundo plano (fundos em alta e "Em alta"), sem travar a tela
             if (Tmdb.enabled) {
                 launch { runCatching { enrichHero() }.onFailure { if (it is kotlinx.coroutines.CancellationException) throw it } }
-                launch { runCatching { addTrending() }.onFailure { if (it is kotlinx.coroutines.CancellationException) throw it } }
+                if (!homeStreams) launch { runCatching { addTrending() }.onFailure { if (it is kotlinx.coroutines.CancellationException) throw it } }
             }
         }
     }
@@ -250,7 +250,7 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
         return row
     }
 
-    private suspend fun fillStreamings(box: LinearLayout, compact: Boolean = false) {
+    private suspend fun fillStreamings(box: LinearLayout, big: Boolean = false) {
         val services = streamingList()
         if (services.isEmpty()) return
         val cats = coroutineScope {
@@ -260,17 +260,35 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
         // todos aparecem: com categorias próprias abre a categoria; sem elas, o app monta a lista pelo TMDB
         val found = services.map { st -> st to cats.filter { c -> Repo.matches(c.name, st.keys) } }
         box.removeAllViews()
-        if (!compact) box.addView(title(PanelConfig.current.streamingsTitle, null))
+        box.addView(title(PanelConfig.current.streamingsTitle, null))
         val row = LinearLayout(act).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             clipChildren = false
             clipToPadding = false
-            if (compact) setPadding(Ui.dp(act, 4), Ui.dp(act, 4), Ui.dp(act, 16), Ui.dp(act, 4))
-            else setPadding(Ui.dp(act, 8), Ui.dp(act, 8), Ui.dp(act, 24), Ui.dp(act, 12))
+            setPadding(Ui.dp(act, 8), Ui.dp(act, 8), Ui.dp(act, 24), Ui.dp(act, 12))
         }
-        val size = Ui.dp(act, if (compact) 62 else if (portrait) 66 else 78)
-        found.forEach { (st, list) -> row.addView(streamingCircle(st, list, size), LinearLayout.LayoutParams(size, size).apply { marginEnd = Ui.dp(act, if (compact) 14 else if (portrait) 14 else 18) }) }
+        val size = Ui.dp(act, if (big) (if (portrait) 76 else 96) else if (portrait) 66 else 78)
+        found.forEach { (st, list) ->
+            val circle = streamingCircle(st, list, size)
+            if (big) {
+                // ícone + nome embaixo
+                val cell = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; clipChildren = false; clipToPadding = false }
+                cell.addView(circle, LinearLayout.LayoutParams(size, size))
+                cell.addView(TextView(act).apply {
+                    text = st.label
+                    textSize = 13f
+                    setTextColor(Ui.text2)
+                    gravity = Gravity.CENTER
+                    maxLines = 1
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                    setPadding(0, Ui.dp(act, 8), 0, 0)
+                }, LinearLayout.LayoutParams(size + Ui.dp(act, 16), -2))
+                row.addView(cell, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = Ui.dp(act, if (portrait) 8 else 14) })
+            } else {
+                row.addView(circle, LinearLayout.LayoutParams(size, size).apply { marginEnd = Ui.dp(act, if (portrait) 14 else 18) })
+            }
+        }
         box.addView(SafeHorizontalScrollView(act).apply {
             isHorizontalScrollBarEnabled = false
             clipChildren = false
@@ -589,14 +607,7 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
         }
 
         left.addView(heroFrame, LinearLayout.LayoutParams(-1, -2))
-        if (kind == null && streamingList().isNotEmpty()) {
-            // tela inicial: streamings no lugar dos atalhos
-            val slot = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; clipChildren = false; clipToPadding = false }
-            heroStreamSlot = slot
-            left.addView(slot, LinearLayout.LayoutParams(-1, -2).apply { topMargin = gap })
-        } else {
-            left.addView(tilesRow(), LinearLayout.LayoutParams(-1, -2).apply { topMargin = gap })
-        }
+        left.addView(tilesRow(), LinearLayout.LayoutParams(-1, -2).apply { topMargin = gap })
 
         if (portrait) {
             root.addView(left, LinearLayout.LayoutParams(-1, -2))
@@ -612,7 +623,6 @@ class HomeView(private val act: MainActivity, private val kind: Kind?) {
 
     private var rotate: (() -> Unit)? = null
     private var showHero: ((Int, Boolean) -> Unit)? = null
-    private var heroStreamSlot: LinearLayout? = null
     private val heroFeatures = mutableListOf<Feature>()
     private var heroIndex = 0
 
