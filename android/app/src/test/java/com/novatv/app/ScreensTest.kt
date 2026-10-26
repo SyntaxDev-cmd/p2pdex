@@ -102,6 +102,47 @@ class ScreensTest {
     @Config(qualifiers = "w411dp-h891dp-port")
     fun detalheDeFilmeNoCelular() = openDetail(Media("10_4", "Lutador de Rua (2009)", Kind.MOVIE, "", "10", ext = "mp4"))
 
+    /** Espera o carregamento em segundo plano (rede falsa) e processa a tela. */
+    private fun settle() = repeat(40) { Thread.sleep(50); idle() }
+
+    private fun findAll(v: android.view.View, out: MutableList<android.view.View> = mutableListOf()): MutableList<android.view.View> {
+        out.add(v)
+        if (v is android.view.ViewGroup) for (i in 0 until v.childCount) findAll(v.getChildAt(i), out)
+        return out
+    }
+
+    @Test
+    fun streamingTocarFiltroFilmesEFilme() {
+        val c = Robolectric.buildActivity(MainActivity::class.java).setup()
+        settle()
+        val act = c.get()
+        act.openStreaming(StreamService("Globoplay", "", 0xFFFF3D2E.toInt(), -1, listOf("globoplay")))
+        settle()
+        val root = act.pagesContainer
+        // filtro "Filmes (n)"
+        val chip = findAll(root).filterIsInstance<android.widget.TextView>().firstOrNull { it.text.startsWith("Filmes") }
+        org.junit.Assert.assertNotNull("filtro Filmes não apareceu", chip)
+        chip!!.performClick()
+        settle()
+        // primeiro cartaz da grade
+        val grid = findAll(root).filterIsInstance<androidx.recyclerview.widget.RecyclerView>().first { it.adapter?.itemCount ?: 0 > 0 }
+        grid.measure(android.view.View.MeasureSpec.makeMeasureSpec(1280, android.view.View.MeasureSpec.EXACTLY), android.view.View.MeasureSpec.makeMeasureSpec(600, android.view.View.MeasureSpec.EXACTLY))
+        grid.layout(0, 0, 1280, 600)
+        idle()
+        val first = grid.getChildAt(0)
+        org.junit.Assert.assertNotNull("grade vazia", first)
+        first.performClick()
+        settle()
+        val next = shadowOf(act).nextStartedActivity
+        org.junit.Assert.assertNotNull("tocar no filme não abriu os detalhes", next)
+        // abre a tela de detalhes iniciada
+        val d = Robolectric.buildActivity(DetailActivity::class.java, next).setup()
+        settle()
+        assertFalse("A tela de detalhes fechou sozinha", d.get().isFinishing)
+        d.pause().stop().destroy()
+        c.pause().stop().destroy()
+    }
+
     @Test
     fun abasPrincipais() {
         val c = Robolectric.buildActivity(MainActivity::class.java).setup()
