@@ -39,7 +39,9 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = true
-            isShrinkResources = true
+            // sem encolher/renomear recursos: as imagens ficam com o nome original
+            // (res/drawable-nodpi/app_logo.png...) e aparecem no APK Editor para troca
+            isShrinkResources = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             // sem keystore própria assina com a chave de debug (instala, mas troque por uma fixa antes de distribuir)
             signingConfig = signingConfigs.getByName(if (hasKeystore) "release" else "debug")

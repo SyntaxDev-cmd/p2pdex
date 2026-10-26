@@ -34,7 +34,7 @@ class PanelConfig(val json: JSONObject) {
     private val player = json.optJSONObject("player") ?: JSONObject()
 
     val appName: String = app.optString("name").ifBlank { "NovaTV" }
-    // sem imagem no painel, usa as imagens embutidas no APK (assets/images)
+    // sem imagem no painel, usa as imagens embutidas no APK (res/drawable-nodpi)
     val logo: String = app.optString("logo").ifBlank { AppConfig.logo }
     val background: String = app.optString("background").ifBlank { AppConfig.background }
     val backgroundMode: String =

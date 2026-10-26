@@ -66,6 +66,7 @@ jobs:
           cp app/build/outputs/apk/full/release/*.apk "../dist/NovaTV-v${{ github.run_number }}.apk"
           mkdir -p ../dist-latest
           cp app/build/outputs/apk/full/release/*.apk ../dist-latest/NovaTV.apk
+          echo "Imagens editáveis dentro do APK:"; unzip -l ../dist-latest/NovaTV.apk | grep -E "\.(png|jpg|webp)$" || true
           mkdir -p ../dist-play
           cp app/build/outputs/bundle/playRelease/*.aab "../dist-play/NovaTV-play-v${{ github.run_number }}.aab"
 

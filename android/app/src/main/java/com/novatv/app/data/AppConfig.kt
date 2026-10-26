@@ -29,6 +29,16 @@ object AppConfig {
     var background: String = ""
         private set
 
+    /** URI da imagem embutida, ou "" se ela não existir ou for o marcador vazio (1x1). */
+    private fun resImage(ctx: Context, name: String): String {
+        val id = ctx.resources.getIdentifier(name, "drawable", ctx.packageName)
+        if (id == 0) return ""
+        val opts = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        runCatching { android.graphics.BitmapFactory.decodeResource(ctx.resources, id, opts) }
+        if (opts.outWidth in 0..8 || opts.outHeight in 0..8) return ""
+        return "android.resource://${ctx.packageName}/$id"
+    }
+
     fun load(ctx: Context) {
         runCatching {
             val txt = ctx.assets.open("config.json").bufferedReader().use { it.readText() }
@@ -40,8 +50,8 @@ object AppConfig {
             tmdbToken = o.optString("tmdb_read_token").trim()
             o.optString("tmdb_language").trim().takeIf { it.isNotEmpty() }?.let { tmdbLanguage = it }
         }
-        val images = runCatching { ctx.assets.list("images")?.toSet() }.getOrNull().orEmpty()
-        logo = images.firstOrNull { it.startsWith("logo.") }?.let { "file:///android_asset/images/$it" }.orEmpty()
-        background = images.firstOrNull { it.startsWith("background.") }?.let { "file:///android_asset/images/$it" }.orEmpty()
+        // imagens editáveis no APK (res/drawable-nodpi): aparecem na aba "Imagens" do APK Editor
+        logo = resImage(ctx, "app_logo")
+        background = resImage(ctx, "app_background")
     }
 }
