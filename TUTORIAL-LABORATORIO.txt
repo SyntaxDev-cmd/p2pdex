@@ -19,6 +19,14 @@ baixa tudo sozinho para a pasta "ferramentas".
     Pronto quando aparecer "Ferramentas OK."
 
 
+   JÁ TEM A PASTA NO PC?  Coloque só o ATUALIZAR.bat dentro de
+   D:\LABORATORIO APP DEXONDEV e dê dois cliques: ele baixa e atualiza tudo.
+   - O que for substituído vai para  ferramentas\backup  (nada se perde).
+   - Clientes salvos, chave e APKs prontos não são alterados.
+   - Se a pasta tiver arquivos do seu laboratório antigo com os mesmos nomes,
+     eles NÃO são mexidos: o novo vai para a subpasta  NOVA-LAB.
+
+
 2) GERAR UM APP
 ---------------
  a. Abra o LABORATORIO.bat
@@ -37,6 +45,7 @@ baixa tudo sozinho para a pasta "ferramentas".
 
 
 3) ATUALIZAR O APP DE UM CLIENTE
+   (para atualizar o PRÓPRIO laboratório com as correções novas: ATUALIZAR.bat)
 --------------------------------
  - Em "Cliente salvo", escolha o cliente e clique em GERAR APK.
  - A versão sobe sozinha (v1, v2, v3...) e o APK novo instala POR CIMA do antigo,

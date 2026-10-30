@@ -33,6 +33,26 @@ jobs:
           Write-Host $o
           if ($o -notmatch "@@GUI-OK@@") { exit 1 }
 
+      - name: Instalar/atualizar numa pasta do PC (com backup)
+        shell: powershell
+        run: |
+          # 1) pasta vazia com espaço no nome
+          $d1 = "$env:RUNNER_TEMP\LABORATORIO APP DEXONDEV"
+          powershell -NoProfile -ExecutionPolicy Bypass -File tools\laboratorio.ps1 -Task install -Arg "$d1"
+          if (-not (Test-Path "$d1\tools\laboratorio.ps1") -or -not (Test-Path "$d1\android\gradlew.bat")) { Write-Host "::error::instalação incompleta"; exit 1 }
+          # 2) atualizar por cima: o que existia vai para backup, perfis/chave ficam
+          New-Item -ItemType Directory "$d1\perfis" -Force | Out-Null; Set-Content "$d1\perfis\x.json" "{}"
+          powershell -NoProfile -ExecutionPolicy Bypass -File tools\laboratorio.ps1 -Task install -Arg "$d1"
+          if (-not (Get-ChildItem "$d1\ferramentas\backup" -Directory)) { Write-Host "::error::sem backup"; exit 1 }
+          if (-not (Test-Path "$d1\perfis\x.json")) { Write-Host "::error::perfis apagados"; exit 1 }
+          # 3) pasta de outro laboratório: não mexe, instala em NOVA-LAB
+          $d2 = "$env:RUNNER_TEMP\outro lab"
+          New-Item -ItemType Directory "$d2\tools" -Force | Out-Null; Set-Content "$d2\tools\meu.txt" "nao mexer"
+          powershell -NoProfile -ExecutionPolicy Bypass -File tools\laboratorio.ps1 -Task install -Arg "$d2"
+          if ((Get-Content "$d2\tools\meu.txt") -ne "nao mexer") { Write-Host "::error::alterou arquivos de outro laboratório"; exit 1 }
+          if (-not (Test-Path "$d2\NOVA-LAB\tools\laboratorio.ps1")) { Write-Host "::error::NOVA-LAB não criada"; exit 1 }
+          Write-Host "instalação/atualização OK"
+
       - name: Gerar NovaTV e NovaSports pelo laboratório (instala Java + SDK sozinho)
         shell: powershell
         run: |
@@ -87,7 +107,7 @@ jobs:
         run: |
           mkdir -p out
           git archive --format=zip -o out/LABORATORIO-APP-DEXONDEV.zip HEAD \
-            android sports tools LABORATORIO.bat TUTORIAL-LABORATORIO.txt README.md
+            android sports tools LABORATORIO.bat ATUALIZAR.bat TUTORIAL-LABORATORIO.txt README.md
           unzip -l out/LABORATORIO-APP-DEXONDEV.zip | tail -1
       - name: Publicar
         if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/claude/')

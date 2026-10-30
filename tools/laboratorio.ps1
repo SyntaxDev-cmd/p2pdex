@@ -248,11 +248,52 @@ function Build-App([string]$profilePath) {
     Say "PRONTO! APK: $dest"
 }
 
+# ------------------------------------------------------------------ instalar/atualizar numa pasta do PC
+# Copia o laboratorio (deste pacote) para $target. Tudo que for substituido vai antes para
+# <target>\ferramentas\backup\<data>; clientes, chave, ferramentas e APKs nao sao tocados.
+$PackageItems = @("android", "sports", "tools", "LABORATORIO.bat", "ATUALIZAR.bat", "TUTORIAL-LABORATORIO.txt", "README.md")
+function Install-Into([string]$target) {
+    $target = $target.Trim().Trim('"').TrimEnd("\")
+    if (-not $target) { throw "Pasta de destino vazia." }
+    if (-not (Test-Path $target)) { New-Item -ItemType Directory -Path $target -Force | Out-Null }
+    if ((Resolve-Path $target).Path -eq (Resolve-Path $Root).Path) { Say "Ja esta na pasta certa."; return }
+    # pasta com arquivos de OUTRO laboratorio (mesmos nomes, mas nao sao nossos): nao mexe neles
+    $foreign = @()
+    if ((Test-Path (Join-Path $target "tools")) -and -not (Test-Path (Join-Path $target "tools\laboratorio.ps1"))) { $foreign += "tools" }
+    if ((Test-Path (Join-Path $target "android")) -and -not (Test-Path (Join-Path $target "android\app\src\main\java\com\novatv"))) { $foreign += "android" }
+    if ((Test-Path (Join-Path $target "sports")) -and -not (Test-Path (Join-Path $target "sports\android\gradlew.bat"))) { $foreign += "sports" }
+    if ($foreign.Count -gt 0) {
+        Say ("A pasta ja tem arquivos de outro laboratorio (" + ($foreign -join ", ") + "). Eles NAO serao alterados.")
+        $target = Join-Path $target "NOVA-LAB"
+        if (-not (Test-Path $target)) { New-Item -ItemType Directory -Path $target -Force | Out-Null }
+        Say "O laboratorio novo vai para: $target"
+    }
+    $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+    $bk = Join-Path $target "ferramentas\backup\$stamp"
+    foreach ($it in $PackageItems) {
+        $src = Join-Path $Root $it
+        if (-not (Test-Path $src)) { continue }
+        $dst = Join-Path $target $it
+        if (Test-Path $dst) {
+            New-Item -ItemType Directory -Path $bk -Force | Out-Null
+            Move-Item $dst (Join-Path $bk $it) -Force
+            Say "  backup: $it -> ferramentas\backup\$stamp"
+        }
+        Copy-Item $src $dst -Recurse -Force
+        Say "  atualizado: $it"
+    }
+    # a marca original pode ter mudado no pacote novo
+    $o = Join-Path $target "ferramentas\original"
+    if (Test-Path $o) { Remove-Item $o -Recurse -Force }
+    Say "Laboratorio instalado/atualizado em $target"
+}
+
 # ------------------------------------------------------------------ modo tarefa (rodado em segundo plano pela janela)
 if ($Task -and $Task -ne "guitest") {
     if ($LogFile) { [IO.File]::WriteAllText($LogFile, "", (New-Object Text.UTF8Encoding($false))) }
     try {
         if ($Task -eq "setup") { Install-Tools }
+        elseif ($Task -eq "install") { Install-Into $Arg }
         elseif ($Task -eq "build") { if (-not (Tools-Ready)) { Install-Tools }; Build-App $Arg }
         Say "@@OK@@"
     } catch {
@@ -329,7 +370,7 @@ function Add-FileRow([string]$label, [string]$filter) {
     $t = New-Text 330
     $b = New-Object Windows.Forms.Button
     $b.Text = "Escolher..."; $b.FlatStyle = "Flat"; $b.ForeColor = $C_TXT; $b.BackColor = $C_CARD
-    $b.Location = New-Object Drawing.Point(540, $script:y - 1); $b.Size = New-Object Drawing.Size(80, 26)
+    $b.Location = New-Object Drawing.Point(540, ($script:y - 1)); $b.Size = New-Object Drawing.Size(80, 26)
     $b.Add_Click({
         $d = New-Object Windows.Forms.OpenFileDialog
         $d.Filter = "Imagens|*.png;*.jpg;*.jpeg;*.webp;*.bmp"
@@ -346,7 +387,7 @@ $tBg = Add-FileRow "Fundo (JPG/PNG)"
 
 $tColor = New-Text 120; $tColor.Text = "#0B1020"
 $bColor = New-Object Windows.Forms.Button
-$bColor.Text = "Cor..."; $bColor.FlatStyle = "Flat"; $bColor.Location = New-Object Drawing.Point(330, $y - 1); $bColor.Size = New-Object Drawing.Size(70, 26)
+$bColor.Text = "Cor..."; $bColor.FlatStyle = "Flat"; $bColor.Location = New-Object Drawing.Point(330, ($y - 1)); $bColor.Size = New-Object Drawing.Size(70, 26)
 $bColor.Add_Click({
     $d = New-Object Windows.Forms.ColorDialog
     if ($d.ShowDialog() -eq "OK") { $tColor.Text = "#{0:X2}{1:X2}{2:X2}" -f $d.Color.R, $d.Color.G, $d.Color.B }
