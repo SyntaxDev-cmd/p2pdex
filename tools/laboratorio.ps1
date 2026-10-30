@@ -493,6 +493,8 @@ $script:proc = $null; $script:logFile = $null; $script:logPos = 0; $script:onDon
 $timer = New-Object Windows.Forms.Timer; $timer.Interval = 500
 $timer.Add_Tick({
     if (-not $script:logFile) { return }
+    # le o estado ANTES do log: assim as ultimas linhas (com o resultado) nunca se perdem
+    $exited = ($script:proc -and $script:proc.HasExited)
     if (Test-Path $script:logFile) {
         try {
             $fs = [IO.File]::Open($script:logFile, "Open", "Read", "ReadWrite")
@@ -510,7 +512,7 @@ $timer.Add_Tick({
             }
         } catch { }
     }
-    if ($script:proc -and $script:proc.HasExited) {
+    if ($exited) {
         $timer.Stop(); $script:logFile = $null
         $bGo.Enabled = $true; $bSetup.Enabled = $true
         if ($script:onDone) { & $script:onDone $script:result }
