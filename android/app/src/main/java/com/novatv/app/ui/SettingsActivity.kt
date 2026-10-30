@@ -99,6 +99,14 @@ class SettingsActivity : BaseActivity() {
             startActivity(Intent(this, ProfilesActivity::class.java).putExtra("manage", true))
         }
 
+        row("Tema do Kids", Sections.kidsThemes.firstOrNull { it.key == Prefs.kidsTheme }?.label?.trim() ?: Sections.kidsThemes[0].label.trim()) {
+            val themes = Sections.kidsThemes
+            Dialogs.choose(this, "🎨 Tema do Kids", themes.map { it.label }, themes.indexOfFirst { it.key == Prefs.kidsTheme }.coerceAtLeast(0)) {
+                Prefs.kidsTheme = themes[it].key
+                render()
+            }
+        }
+
         section("Player")
         row("Player de vídeo", if (Prefs.playerMode == "external") "Externo (VLC, MX Player...)" else "Interno (recomendado)") {
             Dialogs.choose(this, "Player de vídeo", listOf("Interno (recomendado)", "Externo (VLC, MX Player...)"),
@@ -106,6 +114,13 @@ class SettingsActivity : BaseActivity() {
         }
         row("Formato da tela", resizeNames[Prefs.resizeMode.coerceIn(0, resizeNames.size - 1)]) {
             Dialogs.choose(this, "Formato da tela", resizeNames, Prefs.resizeMode) { Prefs.resizeMode = it; render() }
+        }
+        val surfaces = listOf("" to "Automático (recomendado)", "texture" to "Compatível — para tela preta ou emulador")
+        row("Modo de vídeo", surfaces.firstOrNull { it.first == Prefs.videoSurface }?.second ?: surfaces[0].second) {
+            Dialogs.choose(this, "Modo de vídeo", surfaces.map { it.second }, surfaces.indexOfFirst { it.first == Prefs.videoSurface }.coerceAtLeast(0)) {
+                Prefs.videoSurface = surfaces[it].first
+                render()
+            }
         }
         val formats = listOf("" to "Automático (do servidor)", "ts" to "MPEG-TS (.ts) — mais compatível", "m3u8" to "HLS (.m3u8) — mais estável em redes ruins")
         row("Formato do ao vivo", formats.firstOrNull { it.first == Prefs.liveFormat }?.second ?: formats[0].second) {

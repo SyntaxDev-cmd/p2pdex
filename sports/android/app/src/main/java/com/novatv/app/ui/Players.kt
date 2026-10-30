@@ -33,8 +33,11 @@ object Players {
             "high" -> listOf(30_000, 90_000, 2_500, 5_000)
             else -> listOf(15_000, 50_000, 1_200, 2_500)
         }
+        // a prévia usa buffer menor; o mínimo nunca pode passar do máximo (senão o ExoPlayer fecha o app)
+        val min = if (preview) minOf(minB, 15_000) else minB
+        val max = (if (preview) minOf(maxB, 20_000) else maxB).coerceAtLeast(min)
         val load = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(minB, if (preview) minOf(maxB, 20_000) else maxB, play, rebuf)
+            .setBufferDurationsMs(min, max, minOf(play, min), minOf(rebuf, min))
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
         val http = OkHttpDataSource.Factory(Net.media).setUserAgent(ua)
