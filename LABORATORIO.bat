@@ -34,13 +34,13 @@ set /p BG=Arquivo do fundo JPG/PNG (Enter = manter):
 set /p COR=Cor do fundo do icone #RRGGBB (Enter = #0B1020): 
 if "%COR%"=="" set "COR=#0B1020"
 
-if not "%LOGO%"=="" set "LOGO=%LOGO:"=%"
-if not "%ICON%"=="" set "ICON=%ICON:"=%"
-if not "%BG%"=="" set "BG=%BG:"=%"
+if defined LOGO set "LOGO=%LOGO:"=%"
+if defined ICON set "ICON=%ICON:"=%"
+if defined BG set "BG=%BG:"=%"
 set "ARGS=--app %DIR% --color %COR%"
-if not "%LOGO%"=="" set ARGS=%ARGS% --logo "%LOGO%"
-if not "%ICON%"=="" set ARGS=%ARGS% --icon "%ICON%"
-if not "%BG%"=="" set ARGS=%ARGS% --background "%BG%"
+if defined LOGO set ARGS=%ARGS% --logo "%LOGO%"
+if defined ICON set ARGS=%ARGS% --icon "%ICON%"
+if defined BG set ARGS=%ARGS% --background "%BG%"
 if not "%PANEL%"=="" set ARGS=%ARGS% --panel-url %PANEL%
 
 echo.
