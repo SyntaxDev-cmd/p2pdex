@@ -4,6 +4,10 @@ name: Laboratório (gerar app personalizado)
 # Gera um APK com nome, pacote, painel, logo, ícone e fundo do cliente/revenda,
 # sem mexer no código. O link sai em Releases → "lab-<pacote>".
 on:
+  # teste automático do laboratório (app de exemplo) quando ele muda num branch de teste
+  push:
+    branches: ["claude/**"]
+    paths: ["tools/lab_brand.py", ".github/workflows/lab.yml"]
   workflow_dispatch:
     inputs:
       app:
@@ -50,16 +54,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     env:
-      IN_APP: ${{ inputs.app }}
-      IN_LABEL: ${{ inputs.app_label }}
-      IN_ID: ${{ inputs.app_id }}
+      IN_APP: ${{ inputs.app || 'NovaTV' }}
+      IN_LABEL: ${{ inputs.app_label || 'Lab Teste' }}
+      IN_ID: ${{ inputs.app_id || 'com.labteste.tv' }}
       IN_PANEL: ${{ inputs.panel_url }}
       IN_KEY: ${{ inputs.panel_key }}
       IN_RESELLER: ${{ inputs.reseller }}
-      IN_LOGO: ${{ inputs.logo_url }}
+      IN_LOGO: ${{ github.event_name == 'push' && format('https://raw.githubusercontent.com/{0}/{1}/android/app/src/main/res/drawable-nodpi/app_logo.png', github.repository, github.sha) || inputs.logo_url }}
       IN_ICON: ${{ inputs.icon_url }}
       IN_BG: ${{ inputs.background_url }}
-      IN_COLOR: ${{ inputs.color }}
+      IN_COLOR: ${{ inputs.color || '#0B1020' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -125,8 +129,8 @@ jobs:
 
       - name: Compilar
         env:
-          APP_LABEL: ${{ inputs.app_label }}
-          APP_ID: ${{ inputs.app_id }}
+          APP_LABEL: ${{ env.IN_LABEL }}
+          APP_ID: ${{ env.IN_ID }}
           PANEL_URL: ${{ inputs.panel_url || secrets.PANEL_URL }}
           PANEL_KEY: ${{ inputs.panel_key || secrets.PANEL_KEY }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -145,7 +149,13 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/lab-out"
           cp app/build/outputs/apk/full/release/*.apk "$GITHUB_WORKSPACE/lab-out/$FILE"
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lab-${{ env.IN_ID }}
+          path: lab-out/*.apk
+
       - name: Publicar
+        if: github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: lab-${{ inputs.app_id }}
@@ -160,6 +170,7 @@ jobs:
           files: lab-out/*.apk
 
       - name: Resumo
+        if: github.event_name == 'workflow_dispatch'
         run: |
           echo "### ✅ ${IN_LABEL} pronto" >> "$GITHUB_STEP_SUMMARY"
           echo "Baixar: https://github.com/${GITHUB_REPOSITORY}/releases/download/lab-${IN_ID}/${FILE}" >> "$GITHUB_STEP_SUMMARY"
