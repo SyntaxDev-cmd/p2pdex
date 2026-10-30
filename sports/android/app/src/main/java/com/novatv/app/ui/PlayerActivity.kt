@@ -4,11 +4,14 @@ import android.content.res.ColorStateList
 import android.graphics.Color
 import android.os.Bundle
 import android.view.KeyEvent
+import android.view.LayoutInflater
 import android.view.View
+import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.annotation.OptIn
+import androidx.media3.common.C
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
@@ -38,6 +41,8 @@ class PlayerActivity : BaseActivity() {
     override val keepScreenOn: Boolean = true
 
     private lateinit var playerView: PlayerView
+    private lateinit var playerHolder: ViewGroup
+    private lateinit var btnBack: View
     private lateinit var infoBar: View
     private lateinit var infoLogo: ImageView
     private lateinit var infoTitle: TextView
@@ -57,6 +62,14 @@ class PlayerActivity : BaseActivity() {
     private var nextJob: Job? = null
     private var restartFirst = false
     private var playingEntry: PlayQueue.Entry? = null
+    /** Já apareceu imagem nesta reprodução. */
+    private var firstFrame = false
+    /** Variação de endereço em uso (0 = original; demais = Provider.alternatives). */
+    private var variant = 0
+    private var variantsTried = 0
+    /** Etapas já tentadas para canal "sem imagem" (troca de tela, troca de formato). */
+    private var noPictureStep = 0
+    private var watchJob: Job? = null
     private val live: Boolean get() = PlayQueue.current?.kind == Kind.LIVE
     private val modes = intArrayOf(
         AspectRatioFrameLayout.RESIZE_MODE_FIT, AspectRatioFrameLayout.RESIZE_MODE_FILL, AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
@@ -90,8 +103,17 @@ class PlayerActivity : BaseActivity() {
             finish()
             return
         }
+        // o app fechou tocando da última vez (falha do decodificador do aparelho): usa o modo compatível
+        if (Prefs.playerBusy) {
+            Prefs.playerBusy = false
+            if (Prefs.videoSurface != "texture") {
+                Prefs.videoSurface = "texture"
+                Dialogs.toast(this, "Modo de vídeo compatível ativado para este aparelho")
+            }
+        }
         setContentView(R.layout.activity_player)
-        playerView = findViewById(R.id.player)
+        playerHolder = findViewById(R.id.playerHolder)
+        btnBack = findViewById(R.id.btnBack)
         infoBar = findViewById(R.id.infoBar)
         infoLogo = findViewById(R.id.infoLogo)
         infoTitle = findViewById(R.id.infoTitle)
@@ -103,6 +125,7 @@ class PlayerActivity : BaseActivity() {
         errorMsg = findViewById(R.id.errorMsg)
         topRight = findViewById(R.id.topRight)
         nextBanner = findViewById(R.id.nextBanner)
+        playerView = inflatePlayerView(Prefs.videoSurface == "texture")
         restartFirst = intent.getBooleanExtra("restart", false)
 
         infoProgress.progressTintList = ColorStateList.valueOf(Ui.primary)
@@ -118,12 +141,13 @@ class PlayerActivity : BaseActivity() {
         errorMsg.background = Ui.rounded(Ui.withAlpha(Color.BLACK, 210), Ui.radius(this))
         errorMsg.setOnClickListener { retryNow() }
 
-        listOf(R.id.btnFav, R.id.btnList, R.id.btnAspect).forEach { id ->
+        listOf(R.id.btnBack, R.id.btnFav, R.id.btnList, R.id.btnAspect).forEach { id ->
             findViewById<ImageView>(id).apply {
                 background = Ui.iconButton(this@PlayerActivity)
                 imageTintList = Ui.textColors(Color.WHITE, Ui.focusText)
             }
         }
+        btnBack.setOnClickListener { finish() }
         findViewById<View>(R.id.btnAspect).setOnClickListener { cycleAspect() }
         findViewById<View>(R.id.btnList).setOnClickListener { showOverlay() }
         findViewById<View>(R.id.btnFav).setOnClickListener { toggleCurrentFav() }
@@ -132,18 +156,48 @@ class PlayerActivity : BaseActivity() {
         overlayList.adapter = overlayAdapter
         overlayList.itemAnimator = null
 
-        playerView.resizeMode = modes[Prefs.resizeMode.coerceIn(0, modes.size - 1)]
-        playerView.setShowNextButton(false)
-        playerView.setShowPreviousButton(false)
-        playerView.setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { vis ->
-            if (!live) topRight.visibility = vis
-        })
         findViewById<View>(R.id.root).setOnClickListener {
-            if (live) {
-                if (overlay.visibility == View.VISIBLE) hideOverlay() else showOverlay()
+            // toque na tela (ao vivo): mostra/esconde informações e botões (voltar, lista, favorito)
+            if (!live) return@setOnClickListener
+            when {
+                overlay.visibility == View.VISIBLE -> hideOverlay()
+                btnBack.visibility == View.VISIBLE && btnBack.alpha > 0.5f -> {
+                    infoJob?.cancel()
+                    infoBar.visibility = View.GONE
+                    showLiveButtons(false)
+                }
+                else -> showInfo()
             }
         }
         setupMode()
+    }
+
+    /** Cria o PlayerView: SurfaceView (mais leve) ou TextureView (funciona em qualquer aparelho/emulador). */
+    private fun inflatePlayerView(texture: Boolean): PlayerView {
+        playerHolder.removeAllViews()
+        val v = LayoutInflater.from(this).inflate(if (texture) R.layout.player_texture else R.layout.player_surface, playerHolder, false) as PlayerView
+        playerHolder.addView(v)
+        v.resizeMode = modes[Prefs.resizeMode.coerceIn(0, modes.size - 1)]
+        v.setShowNextButton(false)
+        v.setShowPreviousButton(false)
+        v.setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { vis ->
+            if (!live) {
+                topRight.visibility = vis
+                btnBack.visibility = vis
+            }
+        })
+        v.useController = PlayQueue.current?.kind != Kind.LIVE
+        return v
+    }
+
+    /** Troca para o modo compatível sem parar a reprodução. */
+    private fun switchToTexture() {
+        if (Prefs.videoSurface == "texture") return
+        Prefs.videoSurface = "texture"
+        val p = player
+        playerView.player = null
+        playerView = inflatePlayerView(true)
+        playerView.player = p
     }
 
     private fun setupMode() {
@@ -177,6 +231,15 @@ class PlayerActivity : BaseActivity() {
         }
     }
 
+    override fun onPause() {
+        super.onPause()
+        // saindo do player: libera o decodificador já, antes da tela anterior voltar a tocar a prévia
+        if (isFinishing) {
+            saveProgress()
+            releasePlayer()
+        }
+    }
+
     override fun onStop() {
         saveProgress()
         releasePlayer()
@@ -186,6 +249,8 @@ class PlayerActivity : BaseActivity() {
     private fun releasePlayer() {
         saveJob?.cancel()
         nextJob?.cancel()
+        watchJob?.cancel()
+        if (player != null) Prefs.playerBusy = false
         player?.let {
             it.removeListener(listener)
             it.release()
@@ -202,10 +267,15 @@ class PlayerActivity : BaseActivity() {
         saveProgress()
         playingEntry = e
         retries = 0
+        firstFrame = false
+        variant = Players.preferredVariant[e.kind]?.takeIf { it < urlOptions(e).size } ?: 0
+        variantsTried = 0
+        noPictureStep = 0
+        watchJob?.cancel()
         errorMsg.visibility = View.GONE
         nextBanner.visibility = View.GONE
         nextJob?.cancel()
-        val url = e.url()
+        val url = currentUrl()
         if (url.isEmpty()) {
             showError("Endereço do conteúdo indisponível.")
             return
@@ -213,6 +283,7 @@ class PlayerActivity : BaseActivity() {
         val key = e.resumeKey
         val start = if (key == null || restartFirst) 0L else Prefs.resumePosition(key)
         restartFirst = false
+        if (!Prefs.playerBusy) Prefs.playerBusy = true
         try {
             p.setMediaItem(Players.item(url), start)
             p.prepare()
@@ -230,6 +301,41 @@ class PlayerActivity : BaseActivity() {
         startSaving()
     }
 
+    /** Endereço principal + variações que o servidor pode aceitar (formato, extensão, URL antiga). */
+    private fun urlOptions(e: PlayQueue.Entry? = PlayQueue.current): List<String> {
+        val url = e?.url().orEmpty()
+        if (url.isEmpty()) return emptyList()
+        val alt = runCatching { Repo.provider?.alternatives(url, e!!.kind).orEmpty() }.getOrDefault(emptyList())
+        return listOf(url) + alt
+    }
+
+    private fun currentUrl(): String {
+        val list = urlOptions()
+        return list.getOrElse(variant) { list.firstOrNull().orEmpty() }
+    }
+
+    /** Passa para a próxima variação do endereço. false = todas já foram tentadas. */
+    private fun nextVariant(): Boolean {
+        val n = urlOptions().size
+        if (n < 2 || variantsTried >= n - 1) return false
+        variantsTried++
+        variant = (variant + 1) % n
+        return true
+    }
+
+    private fun reload(keepPosition: Boolean) {
+        val p = player ?: return
+        val url = currentUrl()
+        if (url.isEmpty()) return
+        val pos = if (live || !keepPosition) 0L else p.currentPosition.coerceAtLeast(0)
+        firstFrame = false
+        p.setMediaItem(Players.item(url), pos)
+        p.prepare()
+        p.playWhenReady = true
+    }
+
+    private fun isDecoderError(code: Int) = code in 4001..4005
+
     private val listener = object : Player.Listener {
         override fun onPlayerError(error: PlaybackException) {
             val p = player ?: return
@@ -238,33 +344,43 @@ class PlayerActivity : BaseActivity() {
                 p.prepare()
                 return
             }
-            if (retries < 4) {
+            // decodificador do aparelho recusou o vídeo na SurfaceView: tenta o modo compatível
+            if (isDecoderError(error.errorCode) && Prefs.videoSurface != "texture") {
+                switchToTexture()
+                reload(keepPosition = true)
+                return
+            }
+            // 1ª falha: tenta de novo; 2ª: outra DNS; depois: cada variação do endereço (formato/extensão)
+            val canRetry = when {
+                retries < 1 -> true
+                retries == 1 -> { Repo.provider?.failover(); true }
+                else -> nextVariant()
+            }
+            if (canRetry && retries < 12) {
                 retries++
-                // 2ª falha num canal: tenta o outro formato (TS <-> HLS); 3ª: outra DNS
-                if (live && retries == 2) Players.liveSwap = !Players.liveSwap
-                if (retries >= 3) Repo.provider?.failover()
-                val pos = if (live) 0L else p.currentPosition
+                val e = PlayQueue.current
                 launch {
                     delay(800L * retries)
-                    val cur = player ?: return@launch
-                    val url = PlayQueue.current?.url().orEmpty()
-                    if (url.isEmpty()) return@launch
-                    cur.setMediaItem(Players.item(url), pos)
-                    cur.prepare()
+                    if (player == null || PlayQueue.current != e) return@launch
+                    reload(keepPosition = true)
                 }
                 return
             }
-            if (live) Players.liveSwap = !Players.liveSwap // nenhum formato abriu: volta ao original
-            showError(if (live) "Canal indisponível no momento.\nPressione OK para tentar de novo." else "Não foi possível reproduzir este conteúdo.\nPressione OK para tentar de novo.")
+            showError(if (live) "Canal indisponível no momento.\n${retryHint()}" else "Não foi possível reproduzir este conteúdo.\n${retryHint()}")
         }
 
         override fun onRenderedFirstFrame() {
+            firstFrame = true
+            PlayQueue.current?.let { Players.preferredVariant[it.kind] = variant }
+            watchJob?.cancel()
             errorMsg.visibility = View.GONE
         }
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             if (isPlaying) {
                 errorMsg.visibility = View.GONE
+                PlayQueue.current?.let { Players.preferredVariant[it.kind] = variant }
+                watchPicture()
                 launch {
                     delay(15_000)
                     if (player?.isPlaying == true) retries = 0
@@ -284,6 +400,42 @@ class PlayerActivity : BaseActivity() {
                 Prefs.saveResume(key, e.title, e.logo, Long.MAX_VALUE, Long.MAX_VALUE, e.series ?: e.media)
             }
             if (Prefs.autoNext && PlayQueue.index + 1 < PlayQueue.entries.size) countdownNext() else finish()
+        }
+    }
+
+    private fun retryHint() = if (Ui.isTv) "Pressione OK para tentar de novo." else "Toque aqui para tentar de novo."
+
+    /**
+     * Áudio tocando mas nenhuma imagem depois de alguns segundos ("canal sem imagem"):
+     * 1º troca para o modo de vídeo compatível, 2º tenta o outro formato do ao vivo, 3º avisa.
+     */
+    private fun watchPicture() {
+        if (firstFrame) return
+        watchJob?.cancel()
+        val e = PlayQueue.current
+        watchJob = launch {
+            delay(6_000)
+            val p = player ?: return@launch
+            if (firstFrame || PlayQueue.current != e || !p.isPlaying) return@launch
+            val tracks = p.currentTracks
+            if (!tracks.containsType(C.TRACK_TYPE_VIDEO)) return@launch // rádio / só áudio
+            when {
+                noPictureStep == 0 && Prefs.videoSurface != "texture" -> {
+                    noPictureStep = 1
+                    switchToTexture()
+                    reload(keepPosition = true)
+                }
+                noPictureStep <= 1 && live && nextVariant() -> {
+                    noPictureStep = 2
+                    reload(keepPosition = false)
+                }
+                else -> {
+                    noPictureStep = 3
+                    val supported = tracks.isTypeSupported(C.TRACK_TYPE_VIDEO)
+                    showError(if (supported) "O canal está sem imagem no momento.\n${retryHint()}"
+                        else "Este aparelho não suporta o vídeo deste canal.\nTente a versão HD/SD ou o player externo nas configurações.")
+                }
+            }
         }
     }
 
@@ -379,7 +531,7 @@ class PlayerActivity : BaseActivity() {
             }
             delay(5000)
             infoBar.animate().alpha(0f).setDuration(300).withEndAction { infoBar.visibility = View.GONE }.start()
-            if (overlay.visibility != View.VISIBLE && topRight.findFocus() == null) showLiveButtons(false)
+            if (overlay.visibility != View.VISIBLE && topRight.findFocus() == null && !btnBack.isFocused) showLiveButtons(false)
         }
     }
 
@@ -435,12 +587,14 @@ class PlayerActivity : BaseActivity() {
     /** No ao vivo os botões aparecem junto com as informações / lista. */
     private fun showLiveButtons(show: Boolean) {
         if (!live) return
-        topRight.animate().cancel()
-        if (show) {
-            topRight.visibility = View.VISIBLE
-            topRight.alpha = 1f
-        } else {
-            topRight.animate().alpha(0f).setDuration(250).withEndAction { topRight.visibility = View.GONE }.start()
+        for (v in listOf(topRight, btnBack)) {
+            v.animate().cancel()
+            if (show) {
+                v.visibility = View.VISIBLE
+                v.alpha = 1f
+            } else if (v.visibility == View.VISIBLE) {
+                v.animate().alpha(0f).setDuration(250).withEndAction { v.visibility = View.GONE }.start()
+            }
         }
     }
 

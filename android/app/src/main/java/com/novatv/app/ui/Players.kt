@@ -61,23 +61,8 @@ object Players {
             .build()
     }
 
-    /**
-     * Prévia da aba TV: servidores que não entregam o formato pedido (só HLS ou só TS)
-     * fazem a prévia trocar sozinha; a escolha vale até o app ser fechado.
-     */
-    @Volatile var liveSwap = false
-
-    /** ".../123.ts" <-> ".../123.m3u8" (mantém parâmetros depois do "?"). */
-    fun swapFormat(url: String): String {
-        val q = url.indexOf('?').let { if (it < 0) url.length else it }
-        val path = url.substring(0, q)
-        val rest = url.substring(q)
-        return when {
-            path.endsWith(".ts", true) -> path.dropLast(3) + ".m3u8" + rest
-            path.endsWith(".m3u8", true) -> path.dropLast(5) + ".ts" + rest
-            else -> url
-        }
-    }
+    /** Variação de endereço que funcionou por tipo (ao vivo/filme/série); vale até o app fechar. */
+    val preferredVariant = java.util.concurrent.ConcurrentHashMap<Kind, Int>()
 
     fun item(url: String): MediaItem {
         val b = MediaItem.Builder().setUri(url)

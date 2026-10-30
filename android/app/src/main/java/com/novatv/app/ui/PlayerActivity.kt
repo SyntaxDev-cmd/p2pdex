@@ -64,8 +64,9 @@ class PlayerActivity : BaseActivity() {
     private var playingEntry: PlayQueue.Entry? = null
     /** Já apareceu imagem nesta reprodução. */
     private var firstFrame = false
-    /** Tentando o outro formato do ao vivo (.ts <-> .m3u8). */
-    private var altFormat = false
+    /** Variação de endereço em uso (0 = original; demais = Provider.alternatives). */
+    private var variant = 0
+    private var variantsTried = 0
     /** Etapas já tentadas para canal "sem imagem" (troca de tela, troca de formato). */
     private var noPictureStep = 0
     private var watchJob: Job? = null
@@ -267,7 +268,8 @@ class PlayerActivity : BaseActivity() {
         playingEntry = e
         retries = 0
         firstFrame = false
-        altFormat = false
+        variant = Players.preferredVariant[e.kind]?.takeIf { it < urlOptions(e).size } ?: 0
+        variantsTried = 0
         noPictureStep = 0
         watchJob?.cancel()
         errorMsg.visibility = View.GONE
@@ -299,21 +301,26 @@ class PlayerActivity : BaseActivity() {
         startSaving()
     }
 
-    /** Endereço atual; no ao vivo pode alternar entre .ts e .m3u8 quando um deles não abre. */
-    private fun currentUrl(): String {
-        val url = PlayQueue.current?.url().orEmpty()
-        return if (altFormat && live) swapFormat(url) ?: url else url
+    /** Endereço principal + variações que o servidor pode aceitar (formato, extensão, URL antiga). */
+    private fun urlOptions(e: PlayQueue.Entry? = PlayQueue.current): List<String> {
+        val url = e?.url().orEmpty()
+        if (url.isEmpty()) return emptyList()
+        val alt = runCatching { Repo.provider?.alternatives(url, e!!.kind).orEmpty() }.getOrDefault(emptyList())
+        return listOf(url) + alt
     }
 
-    private fun swapFormat(url: String): String? {
-        val q = url.indexOf('?').let { if (it < 0) url.length else it }
-        val path = url.substring(0, q)
-        val rest = url.substring(q)
-        return when {
-            path.endsWith(".ts", true) -> path.dropLast(3) + ".m3u8" + rest
-            path.endsWith(".m3u8", true) -> path.dropLast(5) + ".ts" + rest
-            else -> null
-        }
+    private fun currentUrl(): String {
+        val list = urlOptions()
+        return list.getOrElse(variant) { list.firstOrNull().orEmpty() }
+    }
+
+    /** Passa para a próxima variação do endereço. false = todas já foram tentadas. */
+    private fun nextVariant(): Boolean {
+        val n = urlOptions().size
+        if (n < 2 || variantsTried >= n - 1) return false
+        variantsTried++
+        variant = (variant + 1) % n
+        return true
     }
 
     private fun reload(keepPosition: Boolean) {
@@ -343,13 +350,14 @@ class PlayerActivity : BaseActivity() {
                 reload(keepPosition = true)
                 return
             }
-            if (retries < 4) {
+            // 1ª falha: tenta de novo; 2ª: outra DNS; depois: cada variação do endereço (formato/extensão)
+            val canRetry = when {
+                retries < 1 -> true
+                retries == 1 -> { Repo.provider?.failover(); true }
+                else -> nextVariant()
+            }
+            if (canRetry && retries < 12) {
                 retries++
-                when (retries) {
-                    2 -> Repo.provider?.failover()
-                    // ao vivo: tenta o outro formato (.ts / .m3u8) antes de desistir
-                    3 -> if (live && swapFormat(PlayQueue.current?.url().orEmpty()) != null) altFormat = !altFormat
-                }
                 val e = PlayQueue.current
                 launch {
                     delay(800L * retries)
@@ -363,6 +371,7 @@ class PlayerActivity : BaseActivity() {
 
         override fun onRenderedFirstFrame() {
             firstFrame = true
+            PlayQueue.current?.let { Players.preferredVariant[it.kind] = variant }
             watchJob?.cancel()
             errorMsg.visibility = View.GONE
         }
@@ -370,6 +379,7 @@ class PlayerActivity : BaseActivity() {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             if (isPlaying) {
                 errorMsg.visibility = View.GONE
+                PlayQueue.current?.let { Players.preferredVariant[it.kind] = variant }
                 watchPicture()
                 launch {
                     delay(15_000)
@@ -415,9 +425,8 @@ class PlayerActivity : BaseActivity() {
                     switchToTexture()
                     reload(keepPosition = true)
                 }
-                noPictureStep <= 1 && live && swapFormat(PlayQueue.current?.url().orEmpty()) != null -> {
+                noPictureStep <= 1 && live && nextVariant() -> {
                     noPictureStep = 2
-                    altFormat = !altFormat
                     reload(keepPosition = false)
                 }
                 else -> {

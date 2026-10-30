@@ -156,3 +156,9 @@ cd android && APP_LABEL="Minha TV" APP_ID=com.minhatv.app ./gradlew assembleFull
 
 Depois de pronto, o APK ainda pode ser ajustado com MT Manager / APK Editor:
 `assets/config.json` (painel, chave, revenda) e as imagens `res/drawable-nodpi/app_logo` e `app_background`.
+
+### Laboratório no Windows (DEXONDEV)
+
+Copie o projeto para `D:\LABORATORIO APP DEXONDEV` e dê dois cliques em **LABORATORIO.bat**.
+Ele pergunta o app (NovaTV/NovaSports), nome, pacote, painel, logo, ícone e fundo, aplica a marca,
+compila e abre a pasta **SAIDA** com o APK pronto. Precisa de Python 3, Java JDK 17 e Android Studio (SDK).

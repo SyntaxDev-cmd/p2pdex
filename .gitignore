@@ -16,3 +16,4 @@ panel/data/dbname.php
 panel/uploads/*
 !panel/uploads/.htaccess
 !panel/uploads/index.html
+SAIDA/

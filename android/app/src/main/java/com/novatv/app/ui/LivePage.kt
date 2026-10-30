@@ -80,6 +80,8 @@ class LivePage(act: MainActivity, id: String, private val mode: String) : Page(a
     private var loadJob: Job? = null
     private var epgJob: Job? = null
     private var retries = 0
+    /** Variação do endereço em uso na prévia (ver Provider.alternatives). */
+    private var variant = 0
     private val timeFmt = SimpleDateFormat("HH:mm", Locale.getDefault())
 
     init {
@@ -275,6 +277,7 @@ class LivePage(act: MainActivity, id: String, private val mode: String) : Page(a
     private fun play(m: Media) {
         playing = m
         retries = 0
+        variant = Players.preferredVariant[Kind.LIVE] ?: 0
         Prefs.addRecent(m)
         channels.setPlaying(m.key)
         updateFavButton()
@@ -307,6 +310,7 @@ class LivePage(act: MainActivity, id: String, private val mode: String) : Page(a
 
     private val listener = object : Player.Listener {
         override fun onRenderedFirstFrame() {
+            Players.preferredVariant[Kind.LIVE] = variant
             previewLogo.visibility = View.GONE
             previewMsg.visibility = View.GONE
         }
@@ -319,10 +323,11 @@ class LivePage(act: MainActivity, id: String, private val mode: String) : Page(a
                 p.prepare()
                 return
             }
-            if (retries < 3) {
+            val total = options(m).size
+            if (retries < total + 1) {
                 retries++
-                if (retries == 1) Players.liveSwap = !Players.liveSwap
-                if (retries == 3) Repo.provider?.failover()
+                // 1ª falha: outra DNS; depois cada variação do endereço (.ts/.m3u8/URL antiga)
+                if (retries == 1) Repo.provider?.failover() else variant = (variant + 1) % total.coerceAtLeast(1)
                 act.launch {
                     delay(800L * retries)
                     if (playing?.key == m.key && player === p) {
@@ -332,7 +337,6 @@ class LivePage(act: MainActivity, id: String, private val mode: String) : Page(a
                 }
                 return
             }
-            Players.liveSwap = !Players.liveSwap // nenhum formato abriu: volta ao original
             previewMsg.text = "Canal indisponível no momento"
             previewMsg.visibility = View.VISIBLE
         }
@@ -390,8 +394,13 @@ class LivePage(act: MainActivity, id: String, private val mode: String) : Page(a
         if (idx >= 0) chList.scrollToPosition(idx)
     }
 
-    private fun liveUrl(m: Media): String? =
-        Repo.provider?.streamUrl(m)?.let { if (Players.liveSwap) Players.swapFormat(it) else it }
+    private fun options(m: Media): List<String> {
+        val url = Repo.provider?.streamUrl(m).orEmpty()
+        if (url.isEmpty()) return emptyList()
+        return listOf(url) + runCatching { Repo.provider?.alternatives(url, Kind.LIVE).orEmpty() }.getOrDefault(emptyList())
+    }
+
+    private fun liveUrl(m: Media): String? = options(m).let { it.getOrNull(variant) ?: it.firstOrNull() }
 
     private fun releasePlayer() {
         player?.let {

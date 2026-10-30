@@ -320,7 +320,7 @@ class DetailActivity : BaseActivity() {
 
     private fun playMovie(restart: Boolean) {
         val d = details
-        val m = if (d != null && d.ext.isNotEmpty() && media.ext.isEmpty()) media.copy(ext = d.ext) else media
+        val m = if (d != null && d.ext.isNotEmpty() && !d.ext.equals(media.ext, true)) media.copy(ext = d.ext) else media
         PlayQueue.set(listOf(PlayQueue.Entry(d?.name ?: m.name, d?.year.orEmpty(), Kind.MOVIE, d?.cover ?: m.icon, m)), 0)
         startActivity(Intent(this, PlayerActivity::class.java).putExtra("restart", restart))
     }

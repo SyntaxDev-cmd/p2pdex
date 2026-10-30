@@ -34,6 +34,11 @@ interface Provider {
     fun episodeUrl(e: Episode): String
     /** Troca para a próxima DNS depois de falha no player. true se trocou. */
     fun failover(): Boolean
+    /**
+     * Outros endereços para o mesmo conteúdo, tentados pelo player quando o principal não abre
+     * (servidores que só entregam .m3u8, filmes em .mkv sem extensão na lista, URL sem /live/...).
+     */
+    fun alternatives(url: String, kind: Kind): List<String> = UrlVariants.of(url, kind)
 }
 
 /**
@@ -521,5 +526,45 @@ class XtreamProvider(
             is String -> v
             else -> ""
         }
+    }
+}
+
+/**
+ * Variações de endereço de um mesmo conteúdo (ver Provider.alternatives).
+ * Só mexe em endereços no padrão Xtream (id numérico); links comuns de CDN ficam como estão,
+ * exceto a troca .ts <-> .m3u8 do ao vivo.
+ */
+object UrlVariants {
+    fun of(url: String, kind: Kind): List<String> {
+        val q = url.indexOf('?').let { if (it < 0) url.length else it }
+        val path = url.substring(0, q)
+        val query = url.substring(q)
+        val slash = path.lastIndexOf('/')
+        if (slash < 0 || !path.contains("://")) return emptyList()
+        val file = path.substring(slash + 1)
+        val dir = path.substring(0, slash)
+        val dot = file.lastIndexOf('.')
+        val id = if (dot > 0) file.substring(0, dot) else file
+        val ext = if (dot > 0) file.substring(dot + 1).lowercase() else ""
+        val xtream = id.isNotEmpty() && id.all { it.isDigit() }
+        val out = LinkedHashSet<String>()
+        if (kind == Kind.LIVE) {
+            if (ext == "ts" || ext == "m3u8" || xtream) {
+                for (e in listOf("ts", "m3u8")) if (e != ext) out += "$dir/$id.$e$query"
+            }
+            if (xtream) {
+                if (ext.isNotEmpty()) out += "$dir/$id$query"
+                // formato antigo do Xtream: {base}/{user}/{pass}/{id}
+                if (dir.contains("/live/")) {
+                    val old = dir.replaceFirst("/live/", "/")
+                    out += "$old/$id.ts$query"
+                    out += "$old/$id$query"
+                }
+            }
+        } else if (xtream) {
+            for (e in listOf("mp4", "mkv", "m3u8", "avi", "ts")) if (e != ext) out += "$dir/$id.$e$query"
+        }
+        out.remove(url)
+        return out.toList()
     }
 }
