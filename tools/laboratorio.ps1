@@ -34,6 +34,42 @@ function Say([string]$m) {
     Write-Host $line
 }
 
+# Roda um programa externo gravando a saida em arquivo (sem as armadilhas de aspas/stderr do
+# PowerShell 5). Mostra na janela as linhas que casam com $filter e, se falhar, o final da saida.
+function Tail-Lines([string]$file, [long]$pos, [string]$filter) {
+    if (-not (Test-Path $file)) { return $pos }
+    try {
+        $fs = [IO.File]::Open($file, "Open", "Read", "ReadWrite")
+        [void]$fs.Seek($pos, "Begin")
+        $sr = New-Object IO.StreamReader($fs)
+        $txt = $sr.ReadToEnd(); $pos = $fs.Position; $sr.Close()
+        foreach ($l in ($txt -split "`r?`n")) { if ($l -and $filter -and $l -match $filter) { Say ("  " + $l.Trim()) } }
+    } catch { }
+    return $pos
+}
+
+function Run-Native([string]$exe, [string]$argLine, [string]$workDir, [string]$stdin, [string]$filter) {
+    if (-not $workDir) { $workDir = $Root }
+    $id = [guid]::NewGuid().ToString("N").Substring(0, 8)
+    $outF = Join-Path $LogDir "run-$id.out"; $errF = Join-Path $LogDir "run-$id.err"
+    $params = @{ FilePath = $exe; ArgumentList = $argLine; WorkingDirectory = $workDir
+                 RedirectStandardOutput = $outF; RedirectStandardError = $errF; NoNewWindow = $true; PassThru = $true }
+    if ($stdin) { $params.RedirectStandardInput = $stdin }
+    $pr = Start-Process @params
+    $null = $pr.Handle   # sem isso o ExitCode pode vir vazio
+    $pos = 0
+    while (-not $pr.HasExited) { Start-Sleep -Milliseconds 800; $pos = Tail-Lines $outF $pos $filter }
+    $pr.WaitForExit()
+    $pos = Tail-Lines $outF $pos $filter
+    $code = $pr.ExitCode
+    if ($code -ne 0) {
+        Say "  --- ultimas mensagens ---"
+        foreach ($f in @($outF, $errF)) { if (Test-Path $f) { Get-Content $f -Tail 30 | ForEach-Object { if ($_.Trim()) { Say ("  " + $_.Trim()) } } } }
+    }
+    Remove-Item $outF, $errF -Force -ErrorAction SilentlyContinue
+    return $code
+}
+
 function Java-Exe { Join-Path $Jdk "bin\java.exe" }
 function Tools-Ready {
     (Test-Path (Java-Exe)) -and (Test-Path (Join-Path $Sdk "platforms\android-36")) -and (Test-Path (Join-Path $Sdk "licenses"))
@@ -80,12 +116,12 @@ function Install-Tools {
         Remove-Item $tmp -Recurse -Force; Remove-Item $zip -Force
     }
     Say "Aceitando licencas do Android SDK..."
-    $yes = ("y`r`n" * 40)
-    $yes | & cmd /c "`"`"$sdkm`" --sdk_root=`"$Sdk`" --licenses >nul 2>&1`""
+    $yesF = Join-Path $LogDir "yes.txt"
+    [IO.File]::WriteAllText($yesF, ("y`r`n" * 60))
+    $c = Run-Native "cmd.exe" "/c `"`"$sdkm`" --sdk_root=`"$Sdk`" --licenses`"" $Tools $yesF "accepted|Error"
     Say "Instalando Android 16 (API 36) e build-tools (~250 MB, pode demorar)..."
-    & cmd /c "`"`"$sdkm`" --sdk_root=`"$Sdk`" platform-tools `"platforms;android-36`" `"build-tools;35.0.0`" 2>&1`"" |
-        Where-Object { $_ -match "Installing|Downloading|done|Error|Warning" } | ForEach-Object { Say ("  " + $_) }
-    if (-not (Test-Path (Join-Path $Sdk "platforms\android-36"))) { throw "O Android SDK nao foi instalado. Rode de novo." }
+    $c = Run-Native "cmd.exe" "/c `"`"$sdkm`" --sdk_root=`"$Sdk`" platform-tools `"platforms;android-36`" `"build-tools;35.0.0`"`"" $Tools "" "Installing|Unzipping|done|Error|Warning"
+    if (-not (Test-Path (Join-Path $Sdk "platforms\android-36"))) { throw "O Android SDK nao foi instalado (codigo $c). Veja as mensagens acima e rode de novo." }
     Say "Ferramentas prontas! Agora e so gerar os apps."
 }
 
@@ -195,7 +231,7 @@ function Ensure-Key {
         $pass = -join (1..20 | ForEach-Object { $chars | Get-Random })
         Say "Criando a chave de assinatura do laboratorio (guarde a pasta 'chave'!)..."
         $kt = Join-Path $Jdk "bin\keytool.exe"
-        & cmd /c "`"`"$kt`" -genkeypair -keystore `"$ks`" -storepass $pass -keypass $pass -alias dexondev -keyalg RSA -keysize 2048 -validity 10000 -dname `"CN=DEXONDEV, O=DEXONDEV, C=BR`" >nul 2>&1`""
+        [void](Run-Native $kt "-genkeypair -keystore `"$ks`" -storepass $pass -keypass $pass -alias dexondev -keyalg RSA -keysize 2048 -validity 10000 -dname `"CN=DEXONDEV, O=DEXONDEV, C=BR`"" $Keys "" "")
         if (-not (Test-Path $ks)) { throw "Nao consegui criar a chave de assinatura." }
         [IO.File]::WriteAllText($pw, $pass)
     }
@@ -231,13 +267,10 @@ function Build-App([string]$profilePath) {
     $env:KEY_PASSWORD = $key.pass
 
     Say "Compilando (a 1a vez baixa o Gradle e demora uns 5-10 min; depois ~1-2 min)..."
-    Push-Location $proj
     try {
-        & cmd /c "gradlew.bat assembleFullRelease --no-daemon --console=plain 2>&1" | ForEach-Object {
-            if ($_ -match "^e: |error|FAILED|BUILD SUCCESSFUL|What went wrong|> Task :app:assemble") { Say ("  " + $_) }
-        }
-        $ok = ($LASTEXITCODE -eq 0)
-    } finally { Pop-Location; Restore-Original $proj $p.app }
+        $c = Run-Native "cmd.exe" "/c `"`"$proj\gradlew.bat`" assembleFullRelease --no-daemon --console=plain`"" $proj "" "^e: |error:|FAILED|BUILD SUCCESSFUL|What went wrong|Downloading https://services.gradle|> Task :app:(compile|assemble|package)"
+        $ok = ($c -eq 0)
+    } finally { Restore-Original $proj $p.app }
     if (-not $ok) { throw "A compilacao falhou. Veja as linhas acima." }
 
     $apk = Get-ChildItem (Join-Path $proj "app\build\outputs\apk\full\release") -Filter *.apk | Select-Object -First 1
