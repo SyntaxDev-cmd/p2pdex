@@ -137,3 +137,22 @@ https://github.com/SyntaxDev-cmd/p2pdex/releases/download/teste/NovaTV.apk (a Re
 | Vermelho / Bookmark (player) | Favoritar o que está tocando |
 | Segurar OK | Favoritar canal, filme ou série |
 | Botões coloridos (tela principal) | Vermelho = TV, Verde = Filmes, Amarelo = Séries, Azul = Kids |
+
+## 🧪 Laboratório (gerar apps personalizados)
+
+Gere um APK com a marca do cliente/revenda sem mexer no código:
+
+1. GitHub → **Actions** → **Laboratório (gerar app personalizado)** → **Run workflow**
+2. Escolha **NovaTV** ou **NovaSports**, informe nome, pacote (ex.: `com.minhatv.app`), painel e os links da logo/ícone/fundo
+3. O APK sai em **Releases → lab-&lt;pacote&gt;** (link fixo, mostrado no resumo da execução)
+
+No computador (laboratório local), o mesmo processo:
+
+```bash
+python3 tools/lab_brand.py --app android --logo logo.png --background fundo.jpg \
+    --panel-url https://seupainel.com --color "#0B1020"
+cd android && APP_LABEL="Minha TV" APP_ID=com.minhatv.app ./gradlew assembleFullRelease
+```
+
+Depois de pronto, o APK ainda pode ser ajustado com MT Manager / APK Editor:
+`assets/config.json` (painel, chave, revenda) e as imagens `res/drawable-nodpi/app_logo` e `app_background`.

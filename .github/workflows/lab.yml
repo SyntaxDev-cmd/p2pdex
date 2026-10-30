@@ -1,0 +1,165 @@
+name: Laboratório (gerar app personalizado)
+
+# Actions → "Laboratório (gerar app personalizado)" → Run workflow.
+# Gera um APK com nome, pacote, painel, logo, ícone e fundo do cliente/revenda,
+# sem mexer no código. O link sai em Releases → "lab-<pacote>".
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: "Qual app gerar"
+        type: choice
+        options: [NovaTV, NovaSports]
+        default: NovaTV
+      app_label:
+        description: "Nome do app (aparece no celular/TV)"
+        required: true
+        default: "Minha TV"
+      app_id:
+        description: "Pacote único (ex.: com.minhatv.app) — cada app instalado precisa de um diferente"
+        required: true
+        default: "com.minhatv.app"
+      panel_url:
+        description: "URL do painel (vazio = padrão do projeto)"
+        required: false
+      panel_key:
+        description: "PANEL_KEY do painel (opcional)"
+        required: false
+      reseller:
+        description: "Código da revenda (opcional)"
+        required: false
+      logo_url:
+        description: "Link da logo PNG (opcional; também vira ícone e banner da TV)"
+        required: false
+      icon_url:
+        description: "Link do ícone quadrado PNG (opcional)"
+        required: false
+      background_url:
+        description: "Link da imagem de fundo JPG/PNG (opcional)"
+        required: false
+      color:
+        description: "Cor de fundo do ícone/banner (#RRGGBB)"
+        required: false
+        default: "#0B1020"
+
+permissions:
+  contents: write
+
+jobs:
+  lab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      IN_APP: ${{ inputs.app }}
+      IN_LABEL: ${{ inputs.app_label }}
+      IN_ID: ${{ inputs.app_id }}
+      IN_PANEL: ${{ inputs.panel_url }}
+      IN_KEY: ${{ inputs.panel_key }}
+      IN_RESELLER: ${{ inputs.reseller }}
+      IN_LOGO: ${{ inputs.logo_url }}
+      IN_ICON: ${{ inputs.icon_url }}
+      IN_BG: ${{ inputs.background_url }}
+      IN_COLOR: ${{ inputs.color }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Conferir dados
+        run: |
+          set -e
+          fail() { echo "::error title=Dado inválido::$1"; exit 1; }
+          echo "$IN_ID" | grep -Eq '^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$' || fail "Pacote '$IN_ID' inválido. Use só letras minúsculas, números e pontos (ex.: com.minhatv.app)."
+          [ -n "$(echo "$IN_LABEL" | tr -d ' ')" ] || fail "Informe o nome do app."
+          [ ${#IN_LABEL} -le 30 ] || fail "Nome do app muito longo (máx. 30 letras)."
+          case "$IN_LABEL" in *[\'\"\\\<\>\&@?]*) fail "O nome do app não pode ter aspas, apóstrofo, \\, <, >, &, @ ou ?." ;; esac
+          [ -z "$IN_PANEL" ] || echo "$IN_PANEL" | grep -Eq '^https?://[^ ]+$' || fail "URL do painel deve começar com http:// ou https://"
+          [ -z "$IN_COLOR" ] || echo "$IN_COLOR" | grep -Eq '^#[0-9A-Fa-f]{6}$' || fail "Cor deve ser no formato #RRGGBB"
+          if [ "$IN_APP" = "NovaSports" ]; then echo "DIR=sports/android" >> "$GITHUB_ENV"; else echo "DIR=android" >> "$GITHUB_ENV"; fi
+          SAFE=$(echo "$IN_LABEL" | iconv -f utf-8 -t ascii//TRANSLIT 2>/dev/null | tr -cd 'A-Za-z0-9' | head -c 30)
+          echo "FILE=${SAFE:-App}.apk" >> "$GITHUB_ENV"
+
+      - name: Baixar imagens
+        run: |
+          set -e
+          mkdir -p "$RUNNER_TEMP/lab"
+          get() { # url destino
+            [ -z "$1" ] && return 0
+            curl -fsSL --max-time 60 --max-filesize 15000000 -A "Mozilla/5.0" -o "$2" "$1" \
+              || { echo "::error title=Imagem::Não consegui baixar $1 (link direto para a imagem?)"; exit 1; }
+            python3 -c "from PIL import Image; Image.open('$2').verify()" \
+              || { echo "::error title=Imagem::O link $1 não é uma imagem PNG/JPG válida."; exit 1; }
+          }
+          pip install -q pillow
+          get "$IN_LOGO" "$RUNNER_TEMP/lab/logo"
+          get "$IN_ICON" "$RUNNER_TEMP/lab/icon"
+          get "$IN_BG" "$RUNNER_TEMP/lab/bg"
+
+      - name: Aplicar marca
+        run: |
+          set -e
+          args=(--app "$DIR" --color "${IN_COLOR:-#0B1020}")
+          [ -f "$RUNNER_TEMP/lab/logo" ] && args+=(--logo "$RUNNER_TEMP/lab/logo")
+          [ -f "$RUNNER_TEMP/lab/icon" ] && args+=(--icon "$RUNNER_TEMP/lab/icon")
+          [ -f "$RUNNER_TEMP/lab/bg" ] && args+=(--background "$RUNNER_TEMP/lab/bg")
+          [ -n "$IN_PANEL" ] && args+=(--panel-url "$IN_PANEL")
+          [ -n "$IN_KEY" ] && args+=(--panel-key "$IN_KEY")
+          [ -n "$IN_RESELLER" ] && args+=(--reseller "$IN_RESELLER")
+          python3 tools/lab_brand.py "${args[@]}"
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Restaurar keystore (se configurada)
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$DIR/release.keystore"
+            echo "KEYSTORE_FILE=release.keystore" >> "$GITHUB_ENV"
+          else
+            echo "::warning::Sem KEYSTORE_BASE64: APK assinado com chave de debug."
+          fi
+
+      - name: Compilar
+        env:
+          APP_LABEL: ${{ inputs.app_label }}
+          APP_ID: ${{ inputs.app_id }}
+          PANEL_URL: ${{ inputs.panel_url || secrets.PANEL_URL }}
+          PANEL_KEY: ${{ inputs.panel_key || secrets.PANEL_KEY }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          VERSION_CODE: ${{ github.run_number }}
+        working-directory: ${{ env.DIR }}
+        run: |
+          chmod +x gradlew
+          set -o pipefail
+          if ! ./gradlew assembleFullRelease --no-daemon 2>&1 | tee build.log; then
+            msg=$(grep -E -A4 "^e: |error:|What went wrong|AAPT|Execution failed" build.log | head -60 | sed -e 's/%/%25/g' | sed -e ':a;N;$!ba;s/\n/%0A/g')
+            echo "::error title=Falha no build::${msg}"
+            exit 1
+          fi
+          mkdir -p "$GITHUB_WORKSPACE/lab-out"
+          cp app/build/outputs/apk/full/release/*.apk "$GITHUB_WORKSPACE/lab-out/$FILE"
+
+      - name: Publicar
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: lab-${{ inputs.app_id }}
+          target_commitish: ${{ github.sha }}
+          name: "Laboratório: ${{ inputs.app_label }} (${{ inputs.app }})"
+          prerelease: true
+          make_latest: false
+          body: |
+            App gerado pelo Laboratório (build ${{ github.run_number }}).
+            Base: ${{ inputs.app }} • Pacote: ${{ inputs.app_id }}
+            Link fixo: https://github.com/${{ github.repository }}/releases/download/lab-${{ inputs.app_id }}/${{ env.FILE }}
+          files: lab-out/*.apk
+
+      - name: Resumo
+        run: |
+          echo "### ✅ ${IN_LABEL} pronto" >> "$GITHUB_STEP_SUMMARY"
+          echo "Baixar: https://github.com/${GITHUB_REPOSITORY}/releases/download/lab-${IN_ID}/${FILE}" >> "$GITHUB_STEP_SUMMARY"
