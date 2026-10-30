@@ -17,3 +17,14 @@ panel/uploads/*
 !panel/uploads/.htaccess
 !panel/uploads/index.html
 SAIDA/
+
+# Laboratório (gerado no PC)
+SAIDA/
+ferramentas/
+perfis/
+chave/
+sports/android/local.properties
+sports/android/.gradle/
+sports/android/app/build/
+sports/android/build/
+**/.kotlin/

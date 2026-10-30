@@ -1,0 +1,108 @@
+name: Laboratório Windows (teste + pacote)
+
+# Testa o laboratório num Windows de verdade (janela, instalação do Java/SDK e geração
+# do NovaTV e do NovaSports) e publica o pacote pronto em Releases → "laboratorio".
+on:
+  push:
+    branches: [main, "claude/**"]
+    paths: ["tools/**", "LABORATORIO.bat", "TUTORIAL-LABORATORIO.txt", "android/**", "sports/**", ".github/workflows/lab-windows.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sintaxe do script
+        shell: powershell
+        run: |
+          $t = $null; $e = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile("$PWD\tools\laboratorio.ps1", [ref]$t, [ref]$e)
+          if ($e) { $e | ForEach-Object { Write-Host "::error::linha $($_.Extent.StartLineNumber): $($_.Message)" }; exit 1 }
+          Write-Host "sintaxe OK"
+
+      - name: Janela monta sem erro
+        shell: powershell
+        run: |
+          $o = powershell -NoProfile -ExecutionPolicy Bypass -STA -File tools\laboratorio.ps1 -Task guitest 2>&1 | Out-String
+          Write-Host $o
+          if ($o -notmatch "@@GUI-OK@@") { exit 1 }
+
+      - name: Gerar NovaTV e NovaSports pelo laboratório (instala Java + SDK sozinho)
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force perfis | Out-Null
+          $logo = "$PWD\android\app\src\main\res\drawable-nodpi\app_logo.png"
+          $bg = (Get-ChildItem "$PWD\android\app\src\main\res\drawable-nodpi" -Filter "app_background.*" | Select-Object -First 1).FullName
+          $apps = @(
+            @{ app = "NovaTV"; label = "Lab Teste TV"; id = "com.labteste.tv" },
+            @{ app = "NovaSports"; label = "Lab Teste Sports"; id = "com.labteste.sports" }
+          )
+          foreach ($a in $apps) {
+            $p = [ordered]@{ app = $a.app; label = $a.label; id = $a.id; panel = "https://exemplo.com"; key = ""; reseller = "TESTE";
+                             logo = $logo; icon = ""; background = $bg; color = "#102040"; version = 1 }
+            $pf = "$PWD\perfis\$($a.id).json"
+            [IO.File]::WriteAllText($pf, ($p | ConvertTo-Json))
+            $log = "$PWD\lab-$($a.id).log"
+            powershell -NoProfile -ExecutionPolicy Bypass -File tools\laboratorio.ps1 -Task build -Arg $pf -LogFile $log
+            Get-Content $log -Encoding UTF8
+            if (-not (Select-String -Path $log -Pattern "@@OK@@" -Quiet)) { Write-Host "::error::Laboratório falhou ao gerar $($a.app)"; exit 1 }
+          }
+          Get-ChildItem SAIDA
+          if ((Get-ChildItem SAIDA -Filter *.apk).Count -lt 2) { Write-Host "::error::APKs não encontrados em SAIDA"; exit 1 }
+
+      - name: Projeto voltou ao original depois de gerar
+        shell: bash
+        run: |
+          git status --porcelain
+          test -z "$(git status --porcelain -- android sports)" || { echo "::error::o laboratório deixou arquivos de marca alterados"; exit 1; }
+
+      - name: Conferir marca dentro do APK
+        shell: powershell
+        run: |
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $apk = Get-ChildItem SAIDA -Filter "LabTesteTV*.apk" | Select-Object -First 1
+          $z = [IO.Compression.ZipFile]::OpenRead($apk.FullName)
+          $cfg = $z.Entries | Where-Object { $_.FullName -eq "assets/config.json" }
+          $txt = (New-Object IO.StreamReader($cfg.Open())).ReadToEnd(); $z.Dispose()
+          Write-Host $txt
+          if ($txt -notmatch "exemplo.com" -or $txt -notmatch "TESTE") { Write-Host "::error::config.json sem os dados do cliente"; exit 1 }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: laboratorio-apks-teste
+          path: SAIDA/*.apk
+
+  pacote:
+    needs: windows
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Montar o pacote do laboratório
+        run: |
+          mkdir -p out
+          git archive --format=zip -o out/LABORATORIO-APP-DEXONDEV.zip HEAD \
+            android sports tools LABORATORIO.bat TUTORIAL-LABORATORIO.txt README.md
+          unzip -l out/LABORATORIO-APP-DEXONDEV.zip | tail -1
+      - name: Publicar
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/claude/')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: laboratorio
+          target_commitish: ${{ github.sha }}
+          name: "Laboratório DEXONDEV (Windows) — pacote pronto"
+          prerelease: true
+          make_latest: false
+          body: |
+            Pacote do Laboratório DEXONDEV para Windows 10/11, testado automaticamente num Windows
+            (gerou NovaTV e NovaSports) — commit ${{ github.sha }}.
+            1. Baixe o ZIP, clique com o botão direito > Extrair tudo... > D:\LABORATORIO APP DEXONDEV
+            2. Dois cliques em LABORATORIO.bat
+            3. Leia o TUTORIAL-LABORATORIO.txt
+            Link fixo: https://github.com/${{ github.repository }}/releases/download/laboratorio/LABORATORIO-APP-DEXONDEV.zip
+          files: out/LABORATORIO-APP-DEXONDEV.zip

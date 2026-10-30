@@ -1,0 +1,80 @@
+﻿LABORATÓRIO DEXONDEV — COMO USAR
+=================================
+
+O laboratório gera o NovaTV ou o NovaSports com a marca do seu cliente
+(nome, ícone, logo, fundo e painel) direto no seu PC com Windows 10 ou 11.
+Não precisa instalar Android Studio, Java nem Python: na primeira vez ele
+baixa tudo sozinho para a pasta "ferramentas".
+
+
+1) INSTALAR (só uma vez)
+------------------------
+ a. Extraia o ZIP inteiro em:   D:\LABORATORIO APP DEXONDEV
+    (botão direito no ZIP > "Extrair tudo...". Não abra direto de dentro do ZIP.)
+ b. Dê dois cliques em  LABORATORIO.bat
+    - Se o Windows mostrar "O Windows protegeu o computador":
+      clique em "Mais informações" > "Executar assim mesmo".
+ c. Na janela, clique em  "Instalar / atualizar ferramentas".
+    Ele baixa o Java 17 e o Android SDK (~600 MB). Leva de 5 a 15 minutos.
+    Pronto quando aparecer "Ferramentas OK."
+
+
+2) GERAR UM APP
+---------------
+ a. Abra o LABORATORIO.bat
+ b. Preencha:
+    - App base ........ NovaTV (filmes/séries/canais) ou NovaSports (esportes)
+    - Nome do app ..... como aparece no celular/TV (ex.: Minha TV)
+    - Pacote .......... único para cada cliente (ex.: com.minhatv.app)
+    - URL do painel ... ex.: https://p2pwmax.dexdown.shop  (vazio = padrão)
+    - Logo ............ PNG (de preferência com fundo transparente)
+    - Ícone quadrado .. opcional (se vazio, usa a logo sobre a cor escolhida)
+    - Fundo ........... opcional (JPG ou PNG)
+    - Cor ............. fundo do ícone e do banner da Android TV
+ c. Clique em  GERAR APK.
+    A 1ª geração demora uns 10 minutos (baixa o Gradle). As próximas, 1 a 2 minutos.
+ d. O APK aparece na pasta  SAIDA  (ex.: MinhaTV-v1.apk).
+
+
+3) ATUALIZAR O APP DE UM CLIENTE
+--------------------------------
+ - Em "Cliente salvo", escolha o cliente e clique em GERAR APK.
+ - A versão sobe sozinha (v1, v2, v3...) e o APK novo instala POR CIMA do antigo,
+   sem o cliente perder nada.
+
+
+4) MUITO IMPORTANTE: A PASTA "chave"
+------------------------------------
+ - Na 1ª geração o laboratório cria a pasta  chave  (laboratorio.jks + senha.txt).
+ - É ela que assina os seus apps. FAÇA BACKUP (pendrive, Google Drive).
+ - Se perder essa pasta, os apps novos não instalam por cima dos antigos
+   (o cliente teria que desinstalar e instalar de novo).
+
+
+5) DEPOIS DE PRONTO (opcional)
+------------------------------
+ Com o MT Manager / APK Editor dá para trocar sem recompilar:
+ - assets/config.json ............ painel, chave, código da revenda
+ - res/drawable-nodpi/app_logo ... logo
+ - res/drawable-nodpi/app_background ... fundo
+
+
+6) PROBLEMAS COMUNS
+-------------------
+ - "Não consegui baixar...": verifique a internet ou libere no antivírus e tente de novo.
+ - Antivírus bloqueou o .bat: adicione a pasta do laboratório nas exceções.
+ - Falha na compilação: clique de novo em GERAR APK (às vezes é só a internet).
+   Se continuar, envie as mensagens da parte de baixo da janela
+   (também ficam salvas em  ferramentas\logs).
+ - Pasta com acento ou muito longa: prefira caminhos simples, como D:\LABORATORIO APP DEXONDEV.
+
+
+Pastas do laboratório
+---------------------
+ android\ ......... projeto do NovaTV
+ sports\android\ .. projeto do NovaSports
+ tools\ ........... o laboratório
+ ferramentas\ ..... Java, Android SDK e logs (criada sozinha)
+ perfis\ .......... clientes salvos
+ chave\ ........... chave de assinatura (FAÇA BACKUP)
+ SAIDA\ ........... APKs prontos
