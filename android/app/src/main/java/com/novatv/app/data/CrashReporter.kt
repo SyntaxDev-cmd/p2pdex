@@ -34,7 +34,15 @@ object CrashReporter {
                 }
                 file(app).writeText(text)
             }
-            previous?.uncaughtException(thread, e)
+            // erro numa tarefa em segundo plano (vídeo, rede, guia): registra e mantém o app aberto.
+            // Só um erro na tela principal (que a rede de segurança não segurou) fecha o app.
+            if (thread === android.os.Looper.getMainLooper().thread) {
+                previous?.uncaughtException(thread, e)
+            } else {
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    runCatching { android.widget.Toast.makeText(app, "Ops! Algo não saiu como esperado. Tente de novo.", android.widget.Toast.LENGTH_SHORT).show() }
+                }
+            }
         }
     }
 

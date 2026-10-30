@@ -190,10 +190,12 @@ class ChannelAdapter(
         val m = items[position]
         h.num.text = (if (m.num > 0) m.num else position + 1).toString()
         h.name.text = m.name
-        h.logo.load(m.icon.ifEmpty { null }) {
-            placeholder(R.drawable.ic_tv)
-            error(R.drawable.ic_tv)
-            size(160, 100)
+        val tile = LetterTile(m.name)
+        h.logo.load(m.icon.ifBlank { null }) {
+            placeholder(tile)
+            error(tile)
+            fallback(tile)
+            size(160, 160)
         }
         val isPlaying = m.key == playingKey
         h.playing.visibility = if (isPlaying) View.VISIBLE else View.GONE
@@ -294,13 +296,24 @@ class PosterAdapter(
         val live = it.kind == Kind.LIVE
         h.frame.ratio = if (live) 0.75f else 1.5f
         h.image.scaleType = if (live) ImageView.ScaleType.FIT_CENTER else ImageView.ScaleType.CENTER_CROP
-        val pad = if (live) Ui.dp(h.itemView.context, 18) else 0
+        val pad = if (live) Ui.dp(h.itemView.context, 12) else 0
         h.image.setPadding(pad, pad, pad, pad + if (live) Ui.dp(h.itemView.context, 14) else 0)
         h.title.text = it.title
-        h.image.load(it.image.ifEmpty { null }) {
-            placeholder(if (live) R.drawable.ic_tv else R.drawable.ic_movie)
-            error(if (live) R.drawable.ic_tv else R.drawable.ic_movie)
-            size(300, 450)
+        if (live) {
+            // logo de canal: se não houver (ou falhar), mostra capa com as iniciais em vez de ficar vazio
+            val tile = LetterTile(it.title)
+            h.image.load(it.image.ifBlank { null }) {
+                placeholder(tile)
+                error(tile)
+                fallback(tile)
+                size(300, 300)
+            }
+        } else {
+            h.image.load(it.image.ifBlank { null }) {
+                placeholder(R.drawable.ic_movie)
+                error(R.drawable.ic_movie)
+                size(300, 450)
+            }
         }
         h.badge.visibility = if (it.badge.isNotEmpty()) View.VISIBLE else View.GONE
         h.badge.text = it.badge

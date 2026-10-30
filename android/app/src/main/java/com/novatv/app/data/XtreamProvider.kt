@@ -262,19 +262,31 @@ class XtreamProvider(
             }
         }
 
+    /** Logos vêm sujos em muitas listas: "null", espaços, "//host/x.png", caminho relativo. */
+    private fun icon(raw: String?): String {
+        val u = raw.orEmpty().trim().replace(" ", "%20")
+        return when {
+            u.isEmpty() || u.equals("null", true) -> ""
+            u.startsWith("//") -> "http:$u"
+            u.startsWith("http://", true) || u.startsWith("https://", true) -> u
+            u.startsWith("/") -> base.trimEnd('/') + u
+            else -> ""
+        }
+    }
+
     private fun mapItem(kind: Kind, m: Map<String, String>): Media? = when (kind) {
         Kind.LIVE -> m["stream_id"]?.let {
-            Media(it, m["name"].orEmpty().trim(), kind, m["stream_icon"].orEmpty(), m["category_id"].orEmpty(),
+            Media(it, m["name"].orEmpty().trim(), kind, icon(m["stream_icon"]), m["category_id"].orEmpty(),
                 epgId = m["epg_channel_id"].orEmpty(), num = m["num"]?.toDoubleOrNull()?.toInt() ?: 0,
                 added = m["added"]?.toLongOrNull() ?: 0)
         }
         Kind.MOVIE -> m["stream_id"]?.let {
-            Media(it, m["name"].orEmpty().trim(), kind, m["stream_icon"].orEmpty(), m["category_id"].orEmpty(),
+            Media(it, m["name"].orEmpty().trim(), kind, icon(m["stream_icon"]), m["category_id"].orEmpty(),
                 ext = m["container_extension"].orEmpty(), rating = cleanRating(m["rating"]),
                 year = m["year"].orEmpty().ifEmpty { yearOf(m["releasedate"]) }, added = m["added"]?.toLongOrNull() ?: 0)
         }
         Kind.SERIES -> m["series_id"]?.let {
-            Media(it, m["name"].orEmpty().trim(), kind, m["cover"].orEmpty(), m["category_id"].orEmpty(),
+            Media(it, m["name"].orEmpty().trim(), kind, icon(m["cover"]), m["category_id"].orEmpty(),
                 rating = cleanRating(m["rating"]), year = m["year"].orEmpty().ifEmpty { yearOf(m["releaseDate"] ?: m["release_date"]) },
                 added = m["last_modified"]?.toLongOrNull() ?: 0)
         }

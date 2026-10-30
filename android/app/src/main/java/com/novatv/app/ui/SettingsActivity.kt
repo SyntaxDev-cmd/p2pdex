@@ -111,6 +111,7 @@ class SettingsActivity : BaseActivity() {
         row("Formato do ao vivo", formats.firstOrNull { it.first == Prefs.liveFormat }?.second ?: formats[0].second) {
             Dialogs.choose(this, "Formato do ao vivo", formats.map { it.second }, formats.indexOfFirst { it.first == Prefs.liveFormat }.coerceAtLeast(0)) {
                 Prefs.liveFormat = formats[it].first
+                Players.liveSwap = false
                 render()
             }
         }

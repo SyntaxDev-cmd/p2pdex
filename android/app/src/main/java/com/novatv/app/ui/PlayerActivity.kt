@@ -116,6 +116,7 @@ class PlayerActivity : BaseActivity() {
         nextBanner.setTextColor(Ui.textColors(Color.WHITE, Ui.focusText))
         nextBanner.setOnClickListener { playNext() }
         errorMsg.background = Ui.rounded(Ui.withAlpha(Color.BLACK, 210), Ui.radius(this))
+        errorMsg.setOnClickListener { retryNow() }
 
         listOf(R.id.btnFav, R.id.btnList, R.id.btnAspect).forEach { id ->
             findViewById<ImageView>(id).apply {
@@ -157,12 +158,22 @@ class PlayerActivity : BaseActivity() {
         super.onStart()
         // tela fechada logo na abertura (app reaberto pelo sistema ou player externo): nada a fazer
         if (isFinishing || !::playerView.isInitialized) return
+        startPlayer()
+    }
+
+    private fun startPlayer() {
         if (player == null && PlayQueue.current != null) {
-            val p = Players.create(this)
-            p.addListener(listener)
-            player = p
-            playerView.player = p
-            play()
+            try {
+                val p = Players.create(this)
+                p.addListener(listener)
+                player = p
+                playerView.player = p
+                play()
+            } catch (t: Throwable) {
+                // aparelho sem decodificador/recurso: mostra o aviso em vez de fechar o app
+                com.novatv.app.data.CrashReporter.nonFatal(t)
+                showError("Não foi possível iniciar o player neste aparelho.\nPressione OK para tentar de novo.")
+            }
         }
     }
 
@@ -202,9 +213,15 @@ class PlayerActivity : BaseActivity() {
         val key = e.resumeKey
         val start = if (key == null || restartFirst) 0L else Prefs.resumePosition(key)
         restartFirst = false
-        p.setMediaItem(Players.item(url), start)
-        p.prepare()
-        p.playWhenReady = true
+        try {
+            p.setMediaItem(Players.item(url), start)
+            p.prepare()
+            p.playWhenReady = true
+        } catch (t: Throwable) {
+            com.novatv.app.data.CrashReporter.nonFatal(t)
+            showError("Não foi possível reproduzir este conteúdo.\nPressione OK para tentar de novo.")
+            return
+        }
         if (start > 0) Dialogs.toast(this, "Continuando de onde você parou")
         if (e.kind == Kind.LIVE) e.media?.let { Prefs.addRecent(it) }
         overlayAdapter.setPlaying(e.media?.key)
@@ -221,12 +238,14 @@ class PlayerActivity : BaseActivity() {
                 p.prepare()
                 return
             }
-            if (retries < 3) {
+            if (retries < 4) {
                 retries++
-                if (retries >= 2) Repo.provider?.failover()
+                // 2ª falha num canal: tenta o outro formato (TS <-> HLS); 3ª: outra DNS
+                if (live && retries == 2) Players.liveSwap = !Players.liveSwap
+                if (retries >= 3) Repo.provider?.failover()
                 val pos = if (live) 0L else p.currentPosition
                 launch {
-                    delay(1000L * retries)
+                    delay(800L * retries)
                     val cur = player ?: return@launch
                     val url = PlayQueue.current?.url().orEmpty()
                     if (url.isEmpty()) return@launch
@@ -235,6 +254,7 @@ class PlayerActivity : BaseActivity() {
                 }
                 return
             }
+            if (live) Players.liveSwap = !Players.liveSwap // nenhum formato abriu: volta ao original
             showError(if (live) "Canal indisponível no momento.\nPressione OK para tentar de novo." else "Não foi possível reproduzir este conteúdo.\nPressione OK para tentar de novo.")
         }
 
@@ -274,7 +294,7 @@ class PlayerActivity : BaseActivity() {
 
     private fun retryNow() {
         errorMsg.visibility = View.GONE
-        play()
+        if (player == null) startPlayer() else play()
     }
 
     private fun countdownNext() {

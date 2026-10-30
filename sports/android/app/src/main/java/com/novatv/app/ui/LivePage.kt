@@ -272,16 +272,24 @@ class LivePage(act: MainActivity, id: String, private val mode: String) : Page(a
         previewMsg.visibility = View.GONE
         previewLogo.visibility = View.VISIBLE
         previewLogo.load(m.icon.ifEmpty { null }) { error(R.drawable.ic_tv) }
-        val p = player ?: Players.create(act, preview = true).also {
-            player = it
-            playerView.player = it
-            it.addListener(listener)
-        }
-        val url = Repo.provider?.streamUrl(m) ?: return
-        p.setMediaItem(Players.item(url))
-        p.prepare()
-        p.playWhenReady = true
         loadEpg(m)
+        try {
+            val p = player ?: Players.create(act, preview = true).also {
+                player = it
+                playerView.player = it
+                it.addListener(listener)
+            }
+            val url = liveUrl(m) ?: return
+            p.setMediaItem(Players.item(url))
+            p.prepare()
+            p.playWhenReady = true
+        } catch (t: Throwable) {
+            // prévia indisponível neste aparelho: segue sem ela (tela cheia continua funcionando)
+            com.novatv.app.data.CrashReporter.nonFatal(t)
+            releasePlayer()
+            previewMsg.text = "Pré-visualização indisponível. Toque de novo para tela cheia."
+            previewMsg.visibility = View.VISIBLE
+        }
     }
 
     private val listener = object : Player.Listener {
@@ -298,18 +306,20 @@ class LivePage(act: MainActivity, id: String, private val mode: String) : Page(a
                 p.prepare()
                 return
             }
-            if (retries < 2) {
+            if (retries < 3) {
                 retries++
-                if (retries == 2) Repo.provider?.failover()
+                if (retries == 1) Players.liveSwap = !Players.liveSwap
+                if (retries == 3) Repo.provider?.failover()
                 act.launch {
                     delay(800L * retries)
                     if (playing?.key == m.key && player === p) {
-                        p.setMediaItem(Players.item(Repo.provider?.streamUrl(m).orEmpty()))
+                        p.setMediaItem(Players.item(liveUrl(m).orEmpty()))
                         p.prepare()
                     }
                 }
                 return
             }
+            Players.liveSwap = !Players.liveSwap // nenhum formato abriu: volta ao original
             previewMsg.text = "Canal indisponível no momento"
             previewMsg.visibility = View.VISIBLE
         }
@@ -366,6 +376,9 @@ class LivePage(act: MainActivity, id: String, private val mode: String) : Page(a
         val idx = channels.items.indexOf(m)
         if (idx >= 0) chList.scrollToPosition(idx)
     }
+
+    private fun liveUrl(m: Media): String? =
+        Repo.provider?.streamUrl(m)?.let { if (Players.liveSwap) Players.swapFormat(it) else it }
 
     private fun releasePlayer() {
         player?.let {
