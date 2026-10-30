@@ -79,6 +79,8 @@ class LivePage(act: MainActivity, id: String, private val mode: String) : Page(a
     private var loaded = false
     private var loadJob: Job? = null
     private var epgJob: Job? = null
+    /** Prévia presa em "carregando" (servidor lento): troca de formato e avisa. */
+    private var stallJob: Job? = null
     private var retries = 0
     /** Variação do endereço em uso na prévia (ver Provider.alternatives). */
     private var variant = 0
@@ -299,6 +301,7 @@ class LivePage(act: MainActivity, id: String, private val mode: String) : Page(a
             p.setMediaItem(Players.item(url))
             p.prepare()
             p.playWhenReady = true
+            watchStall(m)
         } catch (t: Throwable) {
             // prévia indisponível neste aparelho: segue sem ela (tela cheia continua funcionando)
             com.novatv.app.data.CrashReporter.nonFatal(t)
@@ -310,6 +313,7 @@ class LivePage(act: MainActivity, id: String, private val mode: String) : Page(a
 
     private val listener = object : Player.Listener {
         override fun onRenderedFirstFrame() {
+            stallJob?.cancel()
             Players.preferredVariant[Kind.LIVE] = variant
             previewLogo.visibility = View.GONE
             previewMsg.visibility = View.GONE
@@ -394,6 +398,28 @@ class LivePage(act: MainActivity, id: String, private val mode: String) : Page(a
         if (idx >= 0) chList.scrollToPosition(idx)
     }
 
+    private fun watchStall(m: Media, round: Int = 0) {
+        stallJob?.cancel()
+        stallJob = act.launch {
+            delay(if (round == 0) 15_000 else 18_000)
+            val p = player ?: return@launch
+            if (playing?.key != m.key || p.isPlaying || previewLogo.visibility != View.VISIBLE) return@launch
+            val total = options(m).size
+            if (round + 1 < total) {
+                // tenta a próxima variação (HLS costuma abrir melhor em internet lenta)
+                variant = (variant + 1) % total
+                previewMsg.text = "Conexão lenta… tentando outro formato"
+                previewMsg.visibility = View.VISIBLE
+                p.setMediaItem(Players.item(liveUrl(m).orEmpty()))
+                p.prepare()
+                watchStall(m, round + 1)
+            } else {
+                previewMsg.text = "Canal lento ou fora do ar. Toque de novo para abrir em tela cheia."
+                previewMsg.visibility = View.VISIBLE
+            }
+        }
+    }
+
     private fun options(m: Media): List<String> {
         val url = Repo.provider?.streamUrl(m).orEmpty()
         if (url.isEmpty()) return emptyList()
@@ -403,6 +429,7 @@ class LivePage(act: MainActivity, id: String, private val mode: String) : Page(a
     private fun liveUrl(m: Media): String? = options(m).let { it.getOrNull(variant) ?: it.firstOrNull() }
 
     private fun releasePlayer() {
+        stallJob?.cancel()
         player?.let {
             it.removeListener(listener)
             it.release()

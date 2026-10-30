@@ -28,11 +28,17 @@ object Players {
     @OptIn(UnstableApi::class)
     fun create(ctx: Context, preview: Boolean = false): ExoPlayer {
         val ua = Repo.provider?.server?.userAgent.orEmpty().ifBlank { Net.DEFAULT_UA }
-        val (minB, maxB, play, rebuf) = when (com.novatv.app.data.Prefs.bufferMode.ifEmpty { PanelConfig.current.buffer }) {
+        val (minB0, maxB0, play0, rebuf0) = when (com.novatv.app.data.Prefs.bufferMode.ifEmpty { PanelConfig.current.buffer }) {
             "low" -> listOf(6_000, 25_000, 800, 1_500)
             "high" -> listOf(30_000, 90_000, 2_500, 5_000)
             else -> listOf(15_000, 50_000, 1_200, 2_500)
         }
+        // internet lenta detectada (travou várias vezes): buffer maior e retomada mais segura
+        val slow = slowNetwork && !preview
+        val minB = if (slow) maxOf(minB0, 30_000) else minB0
+        val maxB = if (slow) maxOf(maxB0, 90_000) else maxB0
+        val play = if (slow) maxOf(play0, 2_500) else play0
+        val rebuf = if (slow) maxOf(rebuf0, 6_000) else rebuf0
         // a prévia usa buffer menor; o mínimo nunca pode passar do máximo (senão o ExoPlayer fecha o app)
         val min = if (preview) minOf(minB, 15_000) else minB
         val max = (if (preview) minOf(maxB, 20_000) else maxB).coerceAtLeast(min)
@@ -60,6 +66,9 @@ object Players {
             .setHandleAudioBecomingNoisy(true)
             .build()
     }
+
+    /** Ligado quando o player percebe internet lenta (vale até o app fechar). */
+    @Volatile var slowNetwork = false
 
     /** Variação de endereço que funcionou por tipo (ao vivo/filme/série); vale até o app fechar. */
     val preferredVariant = java.util.concurrent.ConcurrentHashMap<Kind, Int>()

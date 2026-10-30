@@ -70,6 +70,11 @@ class PlayerActivity : BaseActivity() {
     /** Etapas já tentadas para canal "sem imagem" (troca de tela, troca de formato). */
     private var noPictureStep = 0
     private var watchJob: Job? = null
+    /** Vigia de "carregando eternamente" (servidor lento) e contagem de travadas. */
+    private var stallJob: Job? = null
+    private var stalls = 0
+    private var stallWindow = 0L
+    private var lastSeek = 0L
     private val live: Boolean get() = PlayQueue.current?.kind == Kind.LIVE
     private val modes = intArrayOf(
         AspectRatioFrameLayout.RESIZE_MODE_FIT, AspectRatioFrameLayout.RESIZE_MODE_FILL, AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
@@ -247,6 +252,7 @@ class PlayerActivity : BaseActivity() {
     }
 
     private fun releasePlayer() {
+        stallJob?.cancel()
         saveJob?.cancel()
         nextJob?.cancel()
         watchJob?.cancel()
@@ -293,6 +299,7 @@ class PlayerActivity : BaseActivity() {
             showError("Não foi possível reproduzir este conteúdo.\nPressione OK para tentar de novo.")
             return
         }
+        watchStall()
         if (start > 0) Dialogs.toast(this, "Continuando de onde você parou")
         if (e.kind == Kind.LIVE) e.media?.let { Prefs.addRecent(it) }
         overlayAdapter.setPlaying(e.media?.key)
@@ -332,6 +339,44 @@ class PlayerActivity : BaseActivity() {
         p.setMediaItem(Players.item(url), pos)
         p.prepare()
         p.playWhenReady = true
+        watchStall()
+    }
+
+    /**
+     * Servidor lento: canal que fica só "carregando" sem dar erro. Depois de 20 s sem imagem
+     * o ao vivo tenta a próxima variação do endereço (o HLS .m3u8 se adapta melhor à internet lenta).
+     */
+    private fun watchStall() {
+        stallJob?.cancel()
+        val e = PlayQueue.current
+        stallJob = launch {
+            delay(if (Players.slowNetwork) 30_000 else 20_000)
+            val p = player ?: return@launch
+            if (firstFrame || p.isPlaying || PlayQueue.current != e) return@launch
+            if (live && nextVariant()) {
+                Dialogs.toast(this@PlayerActivity, "Conexão lenta: tentando outro formato…")
+                reload(keepPosition = false)
+            } else if (!live) {
+                Dialogs.toast(this@PlayerActivity, "Conexão lenta: carregando, aguarde…")
+            }
+        }
+    }
+
+    /** Travou várias vezes em pouco tempo: aumenta o buffer (espera um pouco mais, mas não engasga). */
+    private fun registerStall() {
+        val now = System.currentTimeMillis()
+        if (now - lastSeek < 4_000) return // carregando por causa de avanço/retrocesso: não é travada
+        if (now - stallWindow > 60_000) { stallWindow = now; stalls = 0 }
+        stalls++
+        if (stalls < 3 || Players.slowNetwork) return
+        Players.slowNetwork = true
+        Dialogs.toast(this, "Internet lenta: aumentando o buffer para evitar travadas")
+        launch {
+            // fora do callback do player: recria com o buffer maior
+            saveProgress()
+            releasePlayer()
+            startPlayer()
+        }
     }
 
     private fun isDecoderError(code: Int) = code in 4001..4005
@@ -371,6 +416,7 @@ class PlayerActivity : BaseActivity() {
 
         override fun onRenderedFirstFrame() {
             firstFrame = true
+            stallJob?.cancel()
             PlayQueue.current?.let { Players.preferredVariant[it.kind] = variant }
             watchJob?.cancel()
             errorMsg.visibility = View.GONE
@@ -388,7 +434,12 @@ class PlayerActivity : BaseActivity() {
             }
         }
 
+        override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
+            if (reason == Player.DISCONTINUITY_REASON_SEEK) lastSeek = System.currentTimeMillis()
+        }
+
         override fun onPlaybackStateChanged(state: Int) {
+            if (state == Player.STATE_BUFFERING && firstFrame) registerStall()
             if (state != Player.STATE_ENDED) return
             if (live) {
                 // transmissão fechou: reconecta

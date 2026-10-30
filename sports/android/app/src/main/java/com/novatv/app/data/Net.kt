@@ -65,9 +65,11 @@ object Net {
             .readTimeout(40, TimeUnit.SECONDS)
             .callTimeout(90, TimeUnit.SECONDS)
             .build()
+        // vídeo: servidores lentos/sobrecarregados demoram a mandar o 1º pedaço; paciência maior
         media = root.newBuilder()
-            .connectTimeout(10, TimeUnit.SECONDS)
-            .readTimeout(20, TimeUnit.SECONDS)
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
             .build()
         images = root.newBuilder()
             .connectTimeout(8, TimeUnit.SECONDS)
