@@ -2,10 +2,10 @@
 ' request: { kind: "config" | "login" | "xtream", ... }  ->  response: { ok, data, error, tag }
 
 sub init()
-    m.top.functionName = "run"
+    m.top.functionName = "doWork"
 end sub
 
-sub run()
+sub doWork()
     req = m.top.request
     if req = invalid then req = {}
     res = { ok: false, data: invalid, error: "", tag: req.tag }
