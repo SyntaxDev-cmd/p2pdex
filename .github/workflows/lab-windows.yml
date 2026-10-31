@@ -53,33 +53,25 @@ jobs:
           if (-not (Test-Path "$d2\NOVA-LAB\tools\laboratorio.ps1")) { Write-Host "::error::NOVA-LAB não criada"; exit 1 }
           Write-Host "instalação/atualização OK"
 
-      - name: Gerar NovaTV e NovaSports pelo laboratório (instala Java + SDK sozinho)
+      - name: Gerar TODOS os modelos de uma vez pelo laboratório (instala Java + SDK sozinho)
         shell: powershell
         run: |
           New-Item -ItemType Directory -Force perfis | Out-Null
           $logo = "$PWD\android\app\src\main\res\drawable-nodpi\app_logo.png"
           $bg = (Get-ChildItem "$PWD\android\app\src\main\res\drawable-nodpi" -Filter "app_background.*" | Select-Object -First 1).FullName
-          $apps = @(
-            @{ app = "NovaTV"; label = "Lab Teste TV"; id = "com.labteste.tv"; play = $false },
-            @{ app = "NovaSports"; label = "Lab Teste Sports"; id = "com.labteste.sports"; play = $false },
-            @{ app = "NovaKids"; label = "Lab Teste Kids"; id = "com.labteste.kids"; play = $true },
-            @{ app = "Roku - NovaTV"; label = "Lab Teste Roku"; id = "com.labteste.roku"; play = $false },
-            @{ app = "Roku - Kids"; label = "Lab Teste RokuKids"; id = "com.labteste.rokukids"; play = $false }
-          )
-          foreach ($a in $apps) {
-            $p = [ordered]@{ app = $a.app; label = $a.label; id = $a.id; panel = "https://exemplo.com"; key = ""; reseller = "TESTE";
-                             logo = $logo; icon = ""; background = $bg; color = "#102040"; version = 1; play = $a.play }
-            $pf = "$PWD\perfis\$($a.id).json"
-            [IO.File]::WriteAllText($pf, ($p | ConvertTo-Json))
-            $log = "$PWD\lab-$($a.id).log"
-            powershell -NoProfile -ExecutionPolicy Bypass -File tools\laboratorio.ps1 -Task build -Arg $pf -LogFile $log
-            Get-Content $log -Encoding UTF8
-            if (-not (Select-String -Path $log -Pattern "@@OK@@" -Quiet)) { Write-Host "::error::Laboratório falhou ao gerar $($a.app)"; exit 1 }
-          }
+          $p = [ordered]@{ app = "NovaTV"; label = "Lab Teste"; id = "com.labteste.app"; panel = "https://exemplo.com"; key = ""; reseller = "TESTE";
+                           logo = $logo; icon = ""; background = $bg; color = "#102040"; version = 1; play = $true }
+          $pf = "$PWD\perfis\com.labteste.app.json"
+          [IO.File]::WriteAllText($pf, ($p | ConvertTo-Json))
+          $log = "$PWD\lab-todos.log"
+          powershell -NoProfile -ExecutionPolicy Bypass -File tools\laboratorio.ps1 -Task buildall -Arg $pf -LogFile $log
+          Get-Content $log -Encoding UTF8
+          if (-not (Select-String -Path $log -Pattern "@@OK@@" -Quiet)) { Write-Host "::error::Laboratório falhou ao gerar todos os modelos"; exit 1 }
           Get-ChildItem SAIDA
-          if ((Get-ChildItem SAIDA -Filter *.apk).Count -lt 3) { Write-Host "::error::APKs não encontrados em SAIDA"; exit 1 }
-          if ((Get-ChildItem SAIDA -Filter *.aab).Count -lt 1) { Write-Host "::error::AAB (Google Play) não gerado"; exit 1 }
-          if ((Get-ChildItem SAIDA -Filter *-roku-*.zip).Count -lt 2) { Write-Host "::error::pacotes Roku não gerados"; exit 1 }
+          if ((Get-ChildItem SAIDA -Filter *.apk).Count -lt 3) { Write-Host "::error::faltam APKs (NovaTV, NovaSports, NovaKids)"; exit 1 }
+          if ((Get-ChildItem SAIDA -Filter *.aab).Count -lt 3) { Write-Host "::error::faltam AABs da Google Play"; exit 1 }
+          if ((Get-ChildItem SAIDA -Filter *-roku-*.zip).Count -lt 3) { Write-Host "::error::faltam pacotes Roku (TV, Kids, Esportes)"; exit 1 }
+          if ((Get-ChildItem perfis -Filter *.json).Count -lt 7) { Write-Host "::error::clientes de cada modelo não foram salvos"; exit 1 }
 
       - name: Projeto voltou ao original depois de gerar
         shell: bash
@@ -91,7 +83,7 @@ jobs:
         shell: powershell
         run: |
           Add-Type -AssemblyName System.IO.Compression.FileSystem
-          $apk = Get-ChildItem SAIDA -Filter "LabTesteTV*.apk" | Select-Object -First 1
+          $apk = Get-ChildItem SAIDA -Filter "LabTeste-v*.apk" | Select-Object -First 1
           $z = [IO.Compression.ZipFile]::OpenRead($apk.FullName)
           $cfg = $z.Entries | Where-Object { $_.FullName -eq "assets/config.json" }
           $txt = (New-Object IO.StreamReader($cfg.Open())).ReadToEnd(); $z.Dispose()
@@ -101,16 +93,31 @@ jobs:
             $z = [IO.Compression.ZipFile]::OpenRead($file)
             try { $e = $z.Entries | Where-Object { $_.FullName -eq $name }; if (-not $e) { return $null }; return (New-Object IO.StreamReader($e.Open())).ReadToEnd() } finally { $z.Dispose() }
           }
-          $kids = (Get-ChildItem SAIDA -Filter "LabTesteKids*.apk" | Select-Object -First 1).FullName
+          $kids = (Get-ChildItem SAIDA -Filter "LabTesteKids-v*.apk" | Select-Object -First 1).FullName
           $k = Read-Entry $kids "assets/config.json"
           if ($k -notmatch '"app_mode":\s*"kids"') { Write-Host "::error::NovaKids sem app_mode=kids: $k"; exit 1 }
-          $roku = (Get-ChildItem SAIDA -Filter "LabTesteRokuKids-roku-*.zip" | Select-Object -First 1).FullName
+          $roku = (Get-ChildItem SAIDA -Filter "LabTesteKids-roku-*.zip" | Select-Object -First 1).FullName
           $man = Read-Entry $roku "manifest"
           $rc = Read-Entry $roku "config.json"
           Write-Host $man; Write-Host $rc
-          if ($man -notmatch "title=Lab Teste RokuKids") { Write-Host "::error::manifest do Roku sem o nome"; exit 1 }
+          if ($man -notmatch "title=Lab Teste Kids") { Write-Host "::error::manifest do Roku sem o nome"; exit 1 }
           if ($rc -notmatch '"app_mode":\s*"kids"' -or $rc -notmatch "exemplo.com") { Write-Host "::error::config do Roku errado"; exit 1 }
           if (-not (Read-Entry $roku "components/MainScene.brs")) { Write-Host "::error::zip do Roku sem barras /"; exit 1 }
+
+      - name: Botão "Atualizar o laboratório" (baixa o pacote publicado e instala por cima)
+        shell: powershell
+        run: |
+          $d = "$env:RUNNER_TEMP\lab copia"
+          powershell -NoProfile -ExecutionPolicy Bypass -File tools\laboratorio.ps1 -Task install -Arg "$d"
+          New-Item -ItemType Directory "$d\perfis" -Force | Out-Null; Set-Content "$d\perfis\cliente.json" "{}"
+          $log = "$env:RUNNER_TEMP\update.log"
+          powershell -NoProfile -ExecutionPolicy Bypass -File "$d\tools\laboratorio.ps1" -Task selfupdate -LogFile $log
+          Get-Content $log -Encoding UTF8
+          if (-not (Select-String -Path $log -Pattern "@@OK@@" -Quiet)) { Write-Host "::error::atualização automática falhou"; exit 1 }
+          if (-not (Test-Path "$d\tools\laboratorio.ps1")) { Write-Host "::error::laboratório sumiu depois de atualizar"; exit 1 }
+          if (-not (Test-Path "$d\perfis\cliente.json")) { Write-Host "::error::clientes apagados na atualização"; exit 1 }
+          if (-not (Get-ChildItem "$d\ferramentas\backup" -Directory)) { Write-Host "::error::sem backup da atualização"; exit 1 }
+          Write-Host "atualização automática OK"
 
       - uses: actions/upload-artifact@v4
         with:

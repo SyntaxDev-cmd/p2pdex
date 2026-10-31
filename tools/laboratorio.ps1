@@ -424,6 +424,7 @@ function Install-Into([string]$target) {
     if ((Test-Path (Join-Path $target "tools")) -and -not (Test-Path (Join-Path $target "tools\laboratorio.ps1"))) { $foreign += "tools" }
     if ((Test-Path (Join-Path $target "android")) -and -not (Test-Path (Join-Path $target "android\app\src\main\java\com\novatv"))) { $foreign += "android" }
     if ((Test-Path (Join-Path $target "sports")) -and -not (Test-Path (Join-Path $target "sports\android\gradlew.bat"))) { $foreign += "sports" }
+    if ((Test-Path (Join-Path $target "roku")) -and -not (Test-Path (Join-Path $target "roku\components\MainScene.brs"))) { $foreign += "roku" }
     if ($foreign.Count -gt 0) {
         Say ("A pasta ja tem arquivos de outro laboratorio (" + ($foreign -join ", ") + "). Eles NAO serao alterados.")
         $target = Join-Path $target "NOVA-LAB"
@@ -450,6 +451,56 @@ function Install-Into([string]$target) {
     Say "Laboratorio instalado/atualizado em $target"
 }
 
+# ------------------------------------------------------------------ gerar todos os modelos de uma vez
+# Mesmo cliente (nome, logo, painel...) em todos os modelos; cada um ganha pacote e versao proprios.
+$ModelSuffix = [ordered]@{
+    "NovaTV" = @("", ""); "NovaSports" = @(".sports", " Sports"); "NovaKids" = @(".kids", " Kids")
+    "Roku - NovaTV" = @(".roku", ""); "Roku - Kids" = @(".rokukids", " Kids"); "Roku - Esportes" = @(".rokusports", " Sports")
+}
+function Build-All([string]$profilePath) {
+    $base = Get-Content $profilePath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $ok = @(); $fail = @()
+    foreach ($name in $Models.Keys) {
+        $suf = $ModelSuffix[$name]
+        $id = $base.id + $suf[0]
+        $label = ($base.label + $suf[1])
+        if ($label.Length -gt 30) { $label = $label.Substring(0, 30).Trim() }
+        $pf = Join-Path $Prof ($id + ".json")
+        $ver = 1
+        if (Test-Path $pf) { try { $ver = [int]((Get-Content $pf -Raw -Encoding UTF8 | ConvertFrom-Json).version) + 1 } catch { $ver = 1 } }
+        $p = [ordered]@{
+            app = $name; label = $label; id = $id; panel = $base.panel; key = $base.key; reseller = $base.reseller
+            logo = $base.logo; icon = $base.icon; background = $base.background; color = $base.color; version = $ver; play = [bool]$base.play
+        }
+        [IO.File]::WriteAllText($pf, ($p | ConvertTo-Json), (New-Object Text.UTF8Encoding($false)))
+        Say "=============== $name ($label) ==============="
+        try { Build-App $pf; $ok += $name }
+        catch { Say ("ERRO em ${name}: " + $_.Exception.Message); $fail += $name }
+    }
+    Say ("Resumo: " + $ok.Count + " gerado(s): " + ($ok -join ", "))
+    if ($fail.Count -gt 0) { throw ("Falharam: " + ($fail -join ", ") + ". Os outros estao na pasta SAIDA.") }
+}
+
+# ------------------------------------------------------------------ atualizar o proprio laboratorio
+$UpdateUrl = "https://github.com/SyntaxDev-cmd/p2pdex/releases/download/laboratorio/LABORATORIO-APP-DEXONDEV.zip"
+function Update-Self {
+    $dir = Join-Path $Tools "atualizacao"
+    if (Test-Path $dir) { Remove-Item $dir -Recurse -Force }
+    New-Item -ItemType Directory -Path $dir | Out-Null
+    $zip = Join-Path $dir "lab.zip"
+    Say "Baixando a versao mais nova do laboratorio..."
+    Download $UpdateUrl $zip
+    Expand-Archive -Path $zip -DestinationPath (Join-Path $dir "pkg") -Force
+    $script = Join-Path $dir "pkg\tools\laboratorio.ps1"
+    if (-not (Test-Path $script)) { throw "Pacote baixado esta incompleto." }
+    $argLine = "-NoProfile -ExecutionPolicy Bypass -File `"$script`" -Task install -Arg `"$Root`""
+    if ($LogFile) { $argLine += " -LogFile `"$LogFile`"" }
+    $c = Run-Native "powershell.exe" $argLine $dir "" ""
+    if ($c -ne 0) { throw "Nao consegui instalar a atualizacao (codigo $c)." }
+    Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
+    Say "Laboratorio atualizado! Feche esta janela e abra o LABORATORIO.bat de novo."
+}
+
 # ------------------------------------------------------------------ modo tarefa (rodado em segundo plano pela janela)
 if ($Task -and $Task -ne "guitest") {
     if ($LogFile) { [IO.File]::WriteAllText($LogFile, "", (New-Object Text.UTF8Encoding($false))) }
@@ -457,6 +508,8 @@ if ($Task -and $Task -ne "guitest") {
         if ($Task -eq "setup") { Install-Tools }
         elseif ($Task -eq "install") { Install-Into $Arg }
         elseif ($Task -eq "build") { Build-App $Arg }
+        elseif ($Task -eq "buildall") { Build-All $Arg }
+        elseif ($Task -eq "selfupdate") { Update-Self }
         Say "@@OK@@"
     } catch {
         Say ("ERRO: " + $_.Exception.Message)
@@ -603,13 +656,22 @@ $bGo.Location = New-Object Drawing.Point(660, 390); $bGo.Size = New-Object Drawi
 $form.Controls.Add($bGo)
 $bSetup = New-Object Windows.Forms.Button
 $bSetup.Text = "Instalar / atualizar ferramentas"; $bSetup.FlatStyle = "Flat"
-$bSetup.Location = New-Object Drawing.Point(660, 446); $bSetup.Size = New-Object Drawing.Size(260, 32)
+$bSetup.Location = New-Object Drawing.Point(660, 494); $bSetup.Size = New-Object Drawing.Size(260, 32)
 $form.Controls.Add($bSetup)
 $bOpen = New-Object Windows.Forms.Button
 $bOpen.Text = "Abrir pasta SAIDA"; $bOpen.FlatStyle = "Flat"
-$bOpen.Location = New-Object Drawing.Point(660, 484); $bOpen.Size = New-Object Drawing.Size(260, 32)
+$bOpen.Location = New-Object Drawing.Point(660, 570); $bOpen.Size = New-Object Drawing.Size(260, 32)
 $bOpen.Add_Click({ Start-Process explorer.exe $Out })
 $form.Controls.Add($bOpen)
+$bAll = New-Object Windows.Forms.Button
+$bAll.Text = "GERAR TODOS OS MODELOS (6)"; $bAll.Font = $fontB; $bAll.FlatStyle = "Flat"
+$bAll.BackColor = [Drawing.Color]::FromArgb(120, 70, 220); $bAll.ForeColor = [Drawing.Color]::White
+$bAll.Location = New-Object Drawing.Point(660, 444); $bAll.Size = New-Object Drawing.Size(260, 40)
+$form.Controls.Add($bAll)
+$bUpdate = New-Object Windows.Forms.Button
+$bUpdate.Text = "Atualizar o laboratorio"; $bUpdate.FlatStyle = "Flat"
+$bUpdate.Location = New-Object Drawing.Point(660, 532); $bUpdate.Size = New-Object Drawing.Size(260, 32)
+$form.Controls.Add($bUpdate)
 
 function Log([string]$m) { $log.AppendText($m + "`r`n") }
 
@@ -653,7 +715,7 @@ $timer.Add_Tick({
     }
     if ($exited) {
         $timer.Stop(); $script:logFile = $null
-        $bGo.Enabled = $true; $bSetup.Enabled = $true
+        $bGo.Enabled = $true; $bSetup.Enabled = $true; $bAll.Enabled = $true; $bUpdate.Enabled = $true
         if ($script:onDone) { & $script:onDone $script:result }
     }
 })
@@ -661,7 +723,7 @@ $timer.Add_Tick({
 function Run-Task([string]$task, [string]$arg, $onDone) {
     $script:logFile = Join-Path $LogDir ("{0}-{1}.log" -f $task, (Get-Date -Format "yyyyMMdd-HHmmss"))
     $script:logPos = 0; $script:result = "erro"; $script:onDone = $onDone
-    $bGo.Enabled = $false; $bSetup.Enabled = $false
+    $bGo.Enabled = $false; $bSetup.Enabled = $false; $bAll.Enabled = $false; $bUpdate.Enabled = $false
     $argLine = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -Task $task -LogFile `"$($script:logFile)`""
     if ($arg) { $argLine += " -Arg `"$arg`"" }
     $script:proc = Start-Process powershell.exe -ArgumentList $argLine -WindowStyle Hidden -PassThru
@@ -673,7 +735,8 @@ $bSetup.Add_Click({
     Run-Task "setup" "" { param($r) if ($r -eq "ok") { Log "Ferramentas OK." } else { Log "Falhou: veja as mensagens acima." } }
 })
 
-$bGo.Add_Click({
+# confere os campos e salva o cliente; devolve o arquivo do perfil (ou $null se faltou algo)
+function Save-FormProfile {
     $label = $tLabel.Text.Trim(); $id = $tId.Text.Trim().ToLower(); $panel = $tPanel.Text.Trim(); $color = $tColor.Text.Trim()
     $err = $null
     if (-not $label) { $err = "Informe o nome do app." }
@@ -683,7 +746,7 @@ $bGo.Add_Click({
     elseif ($panel -and $panel -notmatch "^https?://\S+$") { $err = "A URL do painel deve comecar com http:// ou https://" }
     elseif ($color -notmatch "^#[0-9A-Fa-f]{6}$") { $err = "Cor no formato #RRGGBB (ex.: #0B1020)." }
     else { foreach ($f in @($tLogo.Text, $tIcon.Text, $tBg.Text)) { if ($f -and -not (Test-Path $f)) { $err = "Arquivo nao encontrado: $f" } } }
-    if ($err) { [Windows.Forms.MessageBox]::Show($err, "Laboratorio", "OK", "Warning") | Out-Null; return }
+    if ($err) { [Windows.Forms.MessageBox]::Show($err, "Laboratorio", "OK", "Warning") | Out-Null; return $null }
 
     $pf = Join-Path $Prof ($id + ".json")
     $ver = 1
@@ -694,8 +757,14 @@ $bGo.Add_Click({
         color = $color; version = $ver; play = [bool]$chkPlay.Checked
     }
     [IO.File]::WriteAllText($pf, ($p | ConvertTo-Json), (New-Object Text.UTF8Encoding($false)))
+    return $pf
+}
+
+$bGo.Add_Click({
+    $pf = Save-FormProfile
+    if (-not $pf) { return }
     $log.Clear()
-    Log "Gerando '$label' versao $ver..."
+    Log ("Gerando '" + $tLabel.Text.Trim() + "' (" + [string]$cbApp.SelectedItem + ")...")
     Run-Task "build" $pf {
         param($r)
         if ($r -eq "ok") {
@@ -717,6 +786,40 @@ $form.Add_Shown({
         Log "Ferramentas prontas. Preencha os dados e clique em GERAR APK."
     }
 })
+$bAll.Add_Click({
+    $pf = Save-FormProfile
+    if (-not $pf) { return }
+    $q = [Windows.Forms.MessageBox]::Show("Gerar os 6 modelos (NovaTV, NovaSports, NovaKids e Roku TV/Kids/Esportes) para '" + $tLabel.Text.Trim() + "'?`r`nPode levar de 5 a 15 minutos.", "Laboratorio", "YesNo", "Question")
+    if ($q -ne "Yes") { return }
+    $log.Clear()
+    Log "Gerando todos os modelos..."
+    Run-Task "buildall" $pf {
+        param($r)
+        Load-Profiles
+        if ($r -eq "ok") {
+            [Windows.Forms.MessageBox]::Show("Todos os apps prontos na pasta SAIDA!", "Laboratorio", "OK", "Information") | Out-Null
+        } else {
+            [Windows.Forms.MessageBox]::Show("Alguns modelos falharam (veja as mensagens). Os que deram certo estao na pasta SAIDA.", "Laboratorio", "OK", "Warning") | Out-Null
+        }
+        Start-Process explorer.exe $Out
+    }
+})
+
+$bUpdate.Add_Click({
+    $q = [Windows.Forms.MessageBox]::Show("Baixar e instalar a versao mais nova do laboratorio?`r`nO que for substituido vai para ferramentas\backup. Clientes, chave e APKs ficam.", "Laboratorio", "YesNo", "Question")
+    if ($q -ne "Yes") { return }
+    $log.Clear()
+    Run-Task "selfupdate" "" {
+        param($r)
+        if ($r -eq "ok") {
+            [Windows.Forms.MessageBox]::Show("Laboratorio atualizado! Feche e abra o LABORATORIO.bat de novo.", "Laboratorio", "OK", "Information") | Out-Null
+            $form.Close()
+        } else {
+            [Windows.Forms.MessageBox]::Show("Nao deu para atualizar agora (veja as mensagens). Se algo foi trocado, a copia esta em ferramentas\\backup.", "Laboratorio", "OK", "Warning") | Out-Null
+        }
+    }
+})
+
 # teste automatico: monta a janela e sai sem mostrar
 if ($Task -eq "guitest") { Load-Profiles; Update-Preview; $form.Dispose(); Write-Host "@@GUI-OK@@"; exit 0 }
 [void]$form.ShowDialog()

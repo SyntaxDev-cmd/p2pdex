@@ -27,6 +27,12 @@ baixa tudo sozinho para a pasta "ferramentas".
      eles NÃO são mexidos: o novo vai para a subpasta  NOVA-LAB.
 
 
+   USAR DENTRO DA PASTA ESTUDIO (ex.: D:\LABORATORIO APP DEXONDEV\ESTUDIO):
+   coloque o ATUALIZAR.bat dentro da ESTUDIO e dê dois cliques. Ele instala ali mesmo.
+   Se a ESTUDIO já tiver pastas com os mesmos nomes de outro programa (tools, android,
+   sports, roku), elas NÃO são mexidas: o laboratório vai para ESTUDIO\NOVA-LAB.
+
+
 2) GERAR UM APP
 ---------------
  a. Abra o LABORATORIO.bat
@@ -42,6 +48,17 @@ baixa tudo sozinho para a pasta "ferramentas".
  c. Clique em  GERAR APK.
     A 1ª geração demora uns 10 minutos (baixa o Gradle). As próximas, 1 a 2 minutos.
  d. O APK aparece na pasta  SAIDA  (ex.: MinhaTV-v1.apk).
+
+   GERAR TODOS DE UMA VEZ: preencha os dados do cliente e clique em
+   "GERAR TODOS OS MODELOS (6)". Sai tudo na pasta SAIDA com o mesmo nome/logo:
+     MinhaTV-v1.apk (NovaTV)            MinhaTV-roku-v1.zip (Roku)
+     MinhaTVSports-v1.apk (NovaSports)  MinhaTVKids-roku-v1.zip (Roku Kids)
+     MinhaTVKids-v1.apk (NovaKids)      MinhaTVSports-roku-v1.zip (Roku Esportes)
+   Os pacotes ficam: com.minhatv.app, com.minhatv.app.sports, com.minhatv.app.kids.
+   Se um modelo falhar, os outros continuam e o resumo mostra qual deu problema.
+
+   ATUALIZAR O LABORATÓRIO: botão "Atualizar o laboratorio" na própria janela
+   (ou o ATUALIZAR.bat). Baixa a versão nova, guarda backup e mantém clientes, chave e APKs.
 
 
    MODELOS QUE O LABORATÓRIO GERA (campo "Modelo do app"):
