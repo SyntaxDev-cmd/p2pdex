@@ -67,7 +67,8 @@ object Profiles {
         get() = Prefs.getRaw(currentKey())
         set(v) = Prefs.putRaw(currentKey(), v)
 
-    val current: Profile? get() = all().firstOrNull { it.id == currentId }
+    /** No NovaKids todo perfil é infantil (só conteúdo infantil, sem adulto/esportes). */
+    val current: Profile? get() = all().firstOrNull { it.id == currentId }?.let { if (AppConfig.kidsMode) it.copy(kids = true) else it }
 
     /** Garante pelo menos um perfil e um perfil atual válido. */
     fun ensureDefault(): Profile {

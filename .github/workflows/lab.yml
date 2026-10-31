@@ -13,7 +13,7 @@ on:
       app:
         description: "Qual app gerar"
         type: choice
-        options: [NovaTV, NovaSports]
+        options: [NovaTV, NovaSports, NovaKids]
         default: NovaTV
       app_label:
         description: "Nome do app (aparece no celular/TV)"
@@ -78,6 +78,7 @@ jobs:
           [ -z "$IN_PANEL" ] || echo "$IN_PANEL" | grep -Eq '^https?://[^ ]+$' || fail "URL do painel deve começar com http:// ou https://"
           [ -z "$IN_COLOR" ] || echo "$IN_COLOR" | grep -Eq '^#[0-9A-Fa-f]{6}$' || fail "Cor deve ser no formato #RRGGBB"
           if [ "$IN_APP" = "NovaSports" ]; then echo "DIR=sports/android" >> "$GITHUB_ENV"; else echo "DIR=android" >> "$GITHUB_ENV"; fi
+          if [ "$IN_APP" = "NovaKids" ]; then echo "MODE=kids" >> "$GITHUB_ENV"; else echo "MODE=" >> "$GITHUB_ENV"; fi
           SAFE=$(echo "$IN_LABEL" | iconv -f utf-8 -t ascii//TRANSLIT 2>/dev/null | tr -cd 'A-Za-z0-9' | head -c 30)
           echo "FILE=${SAFE:-App}.apk" >> "$GITHUB_ENV"
 
@@ -100,7 +101,7 @@ jobs:
       - name: Aplicar marca
         run: |
           set -e
-          args=(--app "$DIR" --color "${IN_COLOR:-#0B1020}")
+          args=(--app "$DIR" --color "${IN_COLOR:-#0B1020}" --mode "$MODE")
           [ -f "$RUNNER_TEMP/lab/logo" ] && args+=(--logo "$RUNNER_TEMP/lab/logo")
           [ -f "$RUNNER_TEMP/lab/icon" ] && args+=(--icon "$RUNNER_TEMP/lab/icon")
           [ -f "$RUNNER_TEMP/lab/bg" ] && args+=(--background "$RUNNER_TEMP/lab/bg")

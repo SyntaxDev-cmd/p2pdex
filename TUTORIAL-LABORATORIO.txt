@@ -44,6 +44,28 @@ baixa tudo sozinho para a pasta "ferramentas".
  d. O APK aparece na pasta  SAIDA  (ex.: MinhaTV-v1.apk).
 
 
+   MODELOS QUE O LABORATÓRIO GERA (campo "Modelo do app"):
+    - NovaTV .......... Android: canais, filmes, séries, kids, anime, jogos
+    - NovaSports ...... Android: futebol, jogos ao vivo, notícias, tabelas
+    - NovaKids ........ Android: só conteúdo infantil (sem adulto e sem esportes)
+    - Roku - NovaTV ... Roku: canais, filmes e séries (leve)
+    - Roku - Kids ..... Roku: só canais infantis
+    - Roku - Esportes . Roku: só canais de esporte
+   Apps Android saem como .apk (e .aab para a Google Play, se marcar a opção).
+   Apps Roku saem como .zip (ex.: MinhaTV-roku-v1.zip).
+
+
+2b) INSTALAR NO ROKU (pacote .zip)
+----------------------------------
+ a. No controle do Roku aperte:  Home 3x, Cima 2x, Direita, Esquerda, Direita, Esquerda, Direita.
+ b. Ative o "Developer mode", crie uma senha e anote o IP que aparece (ex.: 192.168.0.20).
+ c. No PC, abra o navegador em  http://IP-DO-ROKU  (usuário: rokudev, senha: a que você criou).
+ d. Clique em "Upload", escolha o .zip da pasta SAIDA e depois em "Install".
+ No app Roku: OK abre, * (opções) favorita, cima/baixo troca de canal durante o vídeo.
+ Em Configurações dá para trocar o FORMATO DA LISTA (Automático/HLS/TS) e o PLAYER
+ (Padrão ou Compatível até 720p, para internet lenta e aparelhos simples).
+
+
 3) ATUALIZAR O APP DE UM CLIENTE
    (para atualizar o PRÓPRIO laboratório com as correções novas: ATUALIZAR.bat)
 --------------------------------
@@ -80,8 +102,9 @@ baixa tudo sozinho para a pasta "ferramentas".
 
 Pastas do laboratório
 ---------------------
- android\ ......... projeto do NovaTV
+ android\ ......... projeto do NovaTV e do NovaKids
  sports\android\ .. projeto do NovaSports
+ roku\ ............ projeto do app Roku
  tools\ ........... o laboratório
  ferramentas\ ..... Java, Android SDK e logs (criada sozinha)
  perfis\ .......... clientes salvos

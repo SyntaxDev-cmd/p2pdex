@@ -22,6 +22,10 @@ object AppConfig {
         private set
     var tmdbLanguage: String = "pt-BR"
         private set
+    /** "kids" = app só infantil (NovaKids, gerado pelo laboratório); "" = app completo. */
+    var mode: String = ""
+        private set
+    val kidsMode: Boolean get() = mode == "kids"
 
     /** Logo/fundo embutidos (URI que o Coil entende) ou "". */
     var logo: String = ""
@@ -49,6 +53,7 @@ object AppConfig {
             tmdbKey = o.optString("tmdb_api_key").trim()
             tmdbToken = o.optString("tmdb_read_token").trim()
             o.optString("tmdb_language").trim().takeIf { it.isNotEmpty() }?.let { tmdbLanguage = it }
+            mode = o.optString("app_mode").trim().lowercase()
         }
         // imagens editáveis no APK (res/drawable-nodpi): aparecem na aba "Imagens" do APK Editor
         logo = resImage(ctx, "app_logo")

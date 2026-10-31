@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Tela unica e leve: menu | categorias | itens (listas simples, sem previa de video). -->
+<component name="MainScene" extends="Scene">
+  <script type="text/brightscript" uri="pkg:/components/MainScene.brs" />
+  <script type="text/brightscript" uri="pkg:/components/Util.brs" />
+  <children>
+    <Poster id="bg" width="1920" height="1080" uri="pkg:/images/bg.jpg" loadDisplayMode="scaleToZoom" />
+    <Rectangle id="shade" width="1920" height="1080" color="0x070A14E0" />
+
+    <Poster id="logo" translation="[60,36]" width="300" height="96" uri="pkg:/images/logo.png" loadDisplayMode="scaleToFit" />
+    <Label id="title" translation="[400,60]" width="900" height="50" text="" color="0xFFFFFFFF" font="font:MediumBoldSystemFont" />
+    <Label id="clock" translation="[1560,60]" width="300" height="50" horizAlign="right" color="0xC8D2F0FF" font="font:MediumSystemFont" />
+
+    <Group id="home" visible="false">
+      <Rectangle translation="[40,160]" width="330" height="860" color="0x18203AC0" />
+      <LabelList id="menu" translation="[56,180]" itemSize="[300,76]" numRows="10" vertFocusAnimationStyle="floatingFocus" color="0xC8D2F0FF" focusedColor="0x000000FF" />
+      <Label id="catsTitle" translation="[400,170]" width="480" height="40" color="0x8C96B4FF" font="font:SmallBoldSystemFont" text="CATEGORIAS" />
+      <LabelList id="cats" translation="[400,215]" itemSize="[480,62]" numRows="12" vertFocusAnimationStyle="floatingFocus" color="0xE6ECFFFF" focusedColor="0x000000FF" />
+      <Label id="itemsTitle" translation="[920,170]" width="940" height="40" color="0x8C96B4FF" font="font:SmallBoldSystemFont" text="" />
+      <LabelList id="items" translation="[920,215]" itemSize="[940,62]" numRows="12" vertFocusAnimationStyle="floatingFocus" color="0xE6ECFFFF" focusedColor="0x000000FF" />
+      <PosterGrid id="grid" translation="[920,215]" basePosterSize="[200,300]" numColumns="4" numRows="2" itemSpacing="[30,70]" caption1NumLines="1" posterDisplayMode="scaleToZoom" loadingBitmapUri="pkg:/images/poster.png" failedBitmapUri="pkg:/images/poster.png" visible="false" />
+      <Label id="status" translation="[920,960]" width="940" height="60" wrap="true" color="0xFFD166FF" font="font:SmallSystemFont" text="" />
+      <Label id="hint" translation="[56,1030]" width="1800" height="40" color="0x6E7896FF" font="font:SmallestSystemFont"
+        text="OK: abrir   |   *: favoritar   |   Voltar: sair da lista   |   No canal: cima/baixo troca de canal" />
+    </Group>
+
+    <Group id="loginBox" visible="false">
+      <Rectangle translation="[560,260]" width="800" height="560" color="0x18203AF0" />
+      <Label translation="[600,300]" width="720" height="60" horizAlign="center" text="Entrar" color="0xFFFFFFFF" font="font:LargeBoldSystemFont" />
+      <Label id="loginMsg" translation="[600,370]" width="720" height="90" horizAlign="center" wrap="true" color="0xC8D2F0FF" font="font:SmallSystemFont"
+        text="Digite o usuario e a senha do seu plano. O servidor e escolhido automaticamente." />
+      <LabelList id="loginList" translation="[640,480]" itemSize="[640,80]" numRows="3" color="0xE6ECFFFF" focusedColor="0x000000FF" />
+    </Group>
+
+    <Label id="loading" translation="[0,500]" width="1920" height="80" horizAlign="center" color="0xFFFFFFFF" font="font:LargeSystemFont" text="Carregando..." />
+
+    <Video id="video" width="1920" height="1080" visible="false" />
+    <Label id="osd" translation="[60,40]" width="1800" height="60" color="0xFFFFFFFF" font="font:MediumBoldSystemFont" visible="false" />
+
+    <Timer id="stallTimer" duration="20" repeat="false" />
+    <Timer id="clockTimer" duration="30" repeat="true" />
+    <Timer id="osdTimer" duration="4" repeat="false" />
+  </children>
+</component>

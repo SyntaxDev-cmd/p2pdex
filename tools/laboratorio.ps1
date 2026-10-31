@@ -16,8 +16,18 @@ $Out    = Join-Path $Root "SAIDA"
 $Keys   = Join-Path $Root "chave"
 $Prof   = Join-Path $Root "perfis"
 $LogDir = Join-Path $Tools "logs"
-$Apps   = [ordered]@{ "NovaTV" = (Join-Path $Root "android"); "NovaSports" = (Join-Path $Root "sports\android") }
-# arquivos de marca (restaurados do original antes de cada geracao)
+# modelos de app que o laboratorio gera (dir = projeto; mode = variacao; kind = android ou roku)
+$Models = [ordered]@{
+    "NovaTV"          = @{ dir = "android";        mode = "";       kind = "android"; desc = "Android: canais, filmes, series, kids, anime" }
+    "NovaSports"      = @{ dir = "sports\android"; mode = "";       kind = "android"; desc = "Android: futebol, jogos ao vivo, noticias, tabelas" }
+    "NovaKids"        = @{ dir = "android";        mode = "kids";   kind = "android"; desc = "Android: so conteudo infantil" }
+    "Roku - NovaTV"   = @{ dir = "roku";           mode = "";       kind = "roku";    desc = "Roku: canais, filmes e series (leve)" }
+    "Roku - Kids"     = @{ dir = "roku";           mode = "kids";   kind = "roku";    desc = "Roku: so canais infantis" }
+    "Roku - Esportes" = @{ dir = "roku";           mode = "sports"; kind = "roku";    desc = "Roku: so canais de esporte" }
+}
+# arquivos de marca do Roku (restaurados do original antes de cada geracao)
+$RokuBrandFiles = @("images", "config.json", "manifest")
+# arquivos de marca do Android (restaurados do original antes de cada geracao)
 $BrandFiles = @(
     "app\src\main\res\drawable-nodpi", "app\src\main\res\drawable-xhdpi\banner.png",
     "app\src\main\res\mipmap-mdpi\ic_launcher.png", "app\src\main\res\mipmap-hdpi\ic_launcher.png",
@@ -155,10 +165,10 @@ function Clear-Res([string]$folder, [string]$name) {
     Get-ChildItem $folder -File | Where-Object { [IO.Path]::GetFileNameWithoutExtension($_.Name) -eq $name } | Remove-Item -Force
 }
 
-function Backup-Original([string]$proj, [string]$app) {
+function Backup-Original([string]$proj, [string]$app, $files = $BrandFiles) {
     $dst = Join-Path $Orig $app
     if (Test-Path $dst) { return }
-    foreach ($f in $BrandFiles) {
+    foreach ($f in $files) {
         $src = Join-Path $proj $f
         if (-not (Test-Path $src)) { continue }
         $to = Join-Path $dst $f
@@ -167,12 +177,12 @@ function Backup-Original([string]$proj, [string]$app) {
     }
 }
 
-function Restore-Original([string]$proj, [string]$app) {
+function Restore-Original([string]$proj, [string]$app, $files = $BrandFiles) {
     $src = Join-Path $Orig $app
     if (-not (Test-Path $src)) { return }
     $nodpi = Join-Path $proj "app\src\main\res\drawable-nodpi"
-    Get-ChildItem $nodpi -File | Remove-Item -Force
-    foreach ($f in $BrandFiles) {
+    if (Test-Path $nodpi) { Get-ChildItem $nodpi -File | Remove-Item -Force }
+    foreach ($f in $files) {
         $from = Join-Path $src $f
         if (-not (Test-Path $from)) { continue }
         $to = Join-Path $proj $f
@@ -218,8 +228,111 @@ function Apply-Brand($p, [string]$proj) {
     if ($p.panel) { $cfg | Add-Member -NotePropertyName panel_url -NotePropertyValue $p.panel.Trim().TrimEnd("/") -Force }
     if ($p.key) { $cfg | Add-Member -NotePropertyName panel_key -NotePropertyValue $p.key.Trim() -Force }
     if ($p.reseller) { $cfg | Add-Member -NotePropertyName reseller_code -NotePropertyValue $p.reseller.Trim().ToUpper() -Force }
+    $cfg | Add-Member -NotePropertyName app_mode -NotePropertyValue ([string]$p.mode) -Force
     [IO.File]::WriteAllText($cfgPath, ($cfg | ConvertTo-Json -Depth 5), (New-Object Text.UTF8Encoding($false)))
     Say "  painel/config gravados"
+}
+
+# ------------------------------------------------------------------ Roku (marca + pacote .zip)
+function Cover-Into([Drawing.Image]$img, [int]$w, [int]$h) {
+    $bmp = New-Object Drawing.Bitmap($w, $h, [Drawing.Imaging.PixelFormat]::Format32bppArgb)
+    $g = [Drawing.Graphics]::FromImage($bmp)
+    $g.InterpolationMode = [Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+    $s = [Math]::Max($w / $img.Width, $h / $img.Height)
+    $dw = [int]($img.Width * $s) + 1; $dh = [int]($img.Height * $s) + 1
+    $g.DrawImage($img, [int](($w - $dw) / 2), [int](($h - $dh) / 2), $dw, $dh)
+    $g.Dispose()
+    return $bmp
+}
+
+function Save-Jpg([Drawing.Bitmap]$bmp, [string]$path) {
+    $enc = [Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() | Where-Object { $_.MimeType -eq "image/jpeg" }
+    $ep = New-Object Drawing.Imaging.EncoderParameters(1)
+    $ep.Param[0] = New-Object Drawing.Imaging.EncoderParameter([Drawing.Imaging.Encoder]::Quality, [long]85)
+    $bmp.Save($path, $enc, $ep); $bmp.Dispose()
+}
+
+function Apply-Brand-Roku($p, [string]$proj) {
+    $img = Join-Path $proj "images"
+    $bg = [Drawing.ColorTranslator]::FromHtml($p.color)
+    $iconSrc = $p.icon; if (-not $iconSrc) { $iconSrc = $p.logo }
+    if ($iconSrc) {
+        $icon = Load-Image $iconSrc
+        $pad = 0.1; $col = $bg
+        if ($p.icon) { $pad = 0; $col = $bg }
+        Save-Png (Fit-Into $icon 336 210 $pad $col) (Join-Path $img "icon_hd.png")
+        Save-Png (Fit-Into $icon 246 140 $pad $col) (Join-Path $img "icon_sd.png")
+        Say "  icones do Roku aplicados"
+    }
+    if ($p.logo) {
+        $logo = Load-Image $p.logo
+        $s = [Math]::Min(1.0, 600.0 / [Math]::Max($logo.Width, $logo.Height))
+        Save-Png (Fit-Into $logo ([int]($logo.Width * $s)) ([int]($logo.Height * $s)) 0 $null) (Join-Path $img "logo.png")
+    }
+    if ($p.background) {
+        $back = Load-Image $p.background
+        Save-Jpg (Cover-Into $back 1920 1080) (Join-Path $img "bg.jpg")
+    }
+    # abertura (splash): fundo + logo
+    $splashBg = $null
+    if ($p.background) { $splashBg = Load-Image $p.background } else { $splashBg = Load-Image (Join-Path $img "bg.jpg") }
+    $logoImg = Load-Image (Join-Path $img "logo.png")
+    foreach ($sz in @(@(1920, 1080, "splash_fhd.jpg"), @(1280, 720, "splash_hd.jpg"))) {
+        $b = Cover-Into $splashBg $sz[0] $sz[1]
+        $g = [Drawing.Graphics]::FromImage($b)
+        $g.FillRectangle((New-Object Drawing.SolidBrush([Drawing.Color]::FromArgb(170, 7, 10, 20))), 0, 0, $sz[0], $sz[1])
+        $l = Fit-Into $logoImg $sz[0] $sz[1] 0.3 $null
+        $g.DrawImage($l, 0, 0, $sz[0], $sz[1]); $l.Dispose(); $g.Dispose()
+        Save-Jpg $b (Join-Path $img $sz[2])
+    }
+    Say "  imagens do Roku aplicadas"
+    $cfgPath = Join-Path $proj "config.json"
+    $cfg = Get-Content $cfgPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $cfg | Add-Member -NotePropertyName app_name -NotePropertyValue $p.label -Force
+    if ($p.panel) { $cfg | Add-Member -NotePropertyName panel_url -NotePropertyValue $p.panel.Trim().TrimEnd("/") -Force }
+    if ($p.key) { $cfg | Add-Member -NotePropertyName panel_key -NotePropertyValue $p.key.Trim() -Force }
+    if ($p.reseller) { $cfg | Add-Member -NotePropertyName reseller_code -NotePropertyValue $p.reseller.Trim().ToUpper() -Force }
+    $cfg | Add-Member -NotePropertyName app_mode -NotePropertyValue ([string]$p.mode) -Force
+    [IO.File]::WriteAllText($cfgPath, ($cfg | ConvertTo-Json -Depth 5), (New-Object Text.UTF8Encoding($false)))
+    # manifest: nome e versao
+    $man = Join-Path $proj "manifest"
+    $lines = Get-Content $man -Encoding UTF8 | ForEach-Object {
+        if ($_ -match "^title=") { "title=" + $p.label }
+        elseif ($_ -match "^build_version=") { "build_version=" + $p.version }
+        elseif ($_ -match "^splash_color=") { "splash_color=" + $p.color }
+        else { $_ }
+    }
+    [IO.File]::WriteAllText($man, (($lines -join "`n") + "`n"), (New-Object Text.UTF8Encoding($false)))
+    Say "  nome, painel e modo gravados"
+}
+
+# ZIP com barras "/" (o Compress-Archive do Windows antigo grava "\" e o Roku recusa)
+function Zip-Folder([string]$folder, [string]$zipPath) {
+    Add-Type -AssemblyName System.IO.Compression
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
+    $zip = [IO.Compression.ZipFile]::Open($zipPath, "Create")
+    try {
+        $base = (Resolve-Path $folder).Path.TrimEnd("\") + "\"
+        Get-ChildItem $folder -Recurse -File | Where-Object { $_.Name -ne "bsconfig.json" } | ForEach-Object {
+            $rel = $_.FullName.Substring($base.Length).Replace("\", "/")
+            [void][IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $_.FullName, $rel, "Optimal")
+        }
+    } finally { $zip.Dispose() }
+}
+
+function Build-Roku($p, [string]$proj, [string]$backupKey) {
+    Say "Preparando Roku -> '$($p.label)' (modo: $(if ($p.mode) { $p.mode } else { 'completo' }))"
+    Backup-Original $proj $backupKey $RokuBrandFiles
+    Restore-Original $proj $backupKey $RokuBrandFiles
+    try {
+        Apply-Brand-Roku $p $proj
+        $safe = ($p.label -replace "[^A-Za-z0-9]", ""); if (-not $safe) { $safe = "App" }
+        $dest = Join-Path $Out ("{0}-roku-v{1}.zip" -f $safe, $p.version)
+        Zip-Folder $proj $dest
+    } finally { Restore-Original $proj $backupKey $RokuBrandFiles }
+    Say "PRONTO! Pacote Roku: $dest"
+    Say "Para instalar: ative o modo desenvolvedor no Roku e envie este .zip pelo navegador (veja o tutorial)."
 }
 
 # ------------------------------------------------------------------ chave de assinatura fixa
@@ -241,8 +354,14 @@ function Ensure-Key {
 # ------------------------------------------------------------------ geracao do APK
 function Build-App([string]$profilePath) {
     $p = Get-Content $profilePath -Raw -Encoding UTF8 | ConvertFrom-Json
-    $proj = $Apps[$p.app]
-    if (-not $proj -or -not (Test-Path $proj)) { throw "Projeto $($p.app) nao encontrado em $proj" }
+    $model = $Models[[string]$p.app]
+    if (-not $model) { throw "Modelo '$($p.app)' desconhecido." }
+    $proj = Join-Path $Root $model.dir
+    if (-not (Test-Path $proj)) { throw "Projeto $($p.app) nao encontrado em $proj" }
+    $p | Add-Member -NotePropertyName mode -NotePropertyValue $model.mode -Force
+    $backupKey = ($model.dir -replace "[\\/]", "_")
+    if ($model.kind -eq "roku") { Build-Roku $p $proj $backupKey; return }
+    if (-not (Tools-Ready)) { Install-Tools }
     $env:JAVA_HOME = $Jdk
     $env:ANDROID_HOME = $Sdk
     $env:ANDROID_SDK_ROOT = $Sdk
@@ -250,8 +369,8 @@ function Build-App([string]$profilePath) {
     [IO.File]::WriteAllText((Join-Path $proj "local.properties"), "sdk.dir=" + ($Sdk -replace "\\", "\\\\") + "`n")
 
     Say "Preparando $($p.app) -> '$($p.label)' ($($p.id))"
-    Backup-Original $proj $p.app
-    Restore-Original $proj $p.app
+    Backup-Original $proj $backupKey
+    Restore-Original $proj $backupKey
     Apply-Brand $p $proj
     $key = Ensure-Key
 
@@ -266,11 +385,13 @@ function Build-App([string]$profilePath) {
     $env:KEY_ALIAS = "dexondev"
     $env:KEY_PASSWORD = $key.pass
 
+    $tasks = "assembleFullRelease"
+    if ($p.play) { $tasks += " bundlePlayRelease"; Say "Tambem vou gerar a versao Google Play (.aab)." }
     Say "Compilando (a 1a vez baixa o Gradle e demora uns 5-10 min; depois ~1-2 min)..."
     try {
-        $c = Run-Native "cmd.exe" "/c `"`"$proj\gradlew.bat`" assembleFullRelease --no-daemon --console=plain`"" $proj "" "^e: |error:|FAILED|BUILD SUCCESSFUL|What went wrong|Downloading https://services.gradle|> Task :app:(compile|assemble|package)"
+        $c = Run-Native "cmd.exe" "/c `"`"$proj\gradlew.bat`" $tasks --no-daemon --console=plain`"" $proj "" "^e: |error:|FAILED|BUILD SUCCESSFUL|What went wrong|Downloading https://services.gradle|> Task :app:(compile|assemble|package|bundle)"
         $ok = ($c -eq 0)
-    } finally { Restore-Original $proj $p.app }
+    } finally { Restore-Original $proj $backupKey }
     if (-not $ok) { throw "A compilacao falhou. Veja as linhas acima." }
 
     $apk = Get-ChildItem (Join-Path $proj "app\build\outputs\apk\full\release") -Filter *.apk | Select-Object -First 1
@@ -279,12 +400,20 @@ function Build-App([string]$profilePath) {
     $dest = Join-Path $Out ("{0}-v{1}.apk" -f $safe, $p.version)
     Copy-Item $apk.FullName $dest -Force
     Say "PRONTO! APK: $dest"
+    if ($p.play) {
+        $aab = Get-ChildItem (Join-Path $proj "app\build\outputs\bundle\playRelease") -Filter *.aab -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($aab) {
+            $destA = Join-Path $Out ("{0}-play-v{1}.aab" -f $safe, $p.version)
+            Copy-Item $aab.FullName $destA -Force
+            Say "PRONTO! Google Play: $destA"
+        }
+    }
 }
 
 # ------------------------------------------------------------------ instalar/atualizar numa pasta do PC
 # Copia o laboratorio (deste pacote) para $target. Tudo que for substituido vai antes para
 # <target>\ferramentas\backup\<data>; clientes, chave, ferramentas e APKs nao sao tocados.
-$PackageItems = @("android", "sports", "tools", "LABORATORIO.bat", "ATUALIZAR.bat", "TUTORIAL-LABORATORIO.txt", "README.md")
+$PackageItems = @("android", "sports", "roku", "tools", "LABORATORIO.bat", "ATUALIZAR.bat", "TUTORIAL-LABORATORIO.txt", "README.md")
 function Install-Into([string]$target) {
     $target = $target.Trim().Trim('"').TrimEnd("\")
     if (-not $target) { throw "Pasta de destino vazia." }
@@ -327,7 +456,7 @@ if ($Task -and $Task -ne "guitest") {
     try {
         if ($Task -eq "setup") { Install-Tools }
         elseif ($Task -eq "install") { Install-Into $Arg }
-        elseif ($Task -eq "build") { if (-not (Tools-Ready)) { Install-Tools }; Build-App $Arg }
+        elseif ($Task -eq "build") { Build-App $Arg }
         Say "@@OK@@"
     } catch {
         Say ("ERRO: " + $_.Exception.Message)
@@ -351,8 +480,11 @@ $fontB = New-Object Drawing.Font("Segoe UI", 10, [Drawing.FontStyle]::Bold)
 
 $form = New-Object Windows.Forms.Form
 $form.Text = "Laboratorio DEXONDEV"
-$form.Size = New-Object Drawing.Size(980, 820)
-$form.MinimumSize = New-Object Drawing.Size(960, 800)
+# cabe em telas pequenas (notebook 1366x768): rola quando precisar
+$wa = [Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+$form.Size = New-Object Drawing.Size(980, [Math]::Min(880, $wa.Height))
+$form.MinimumSize = New-Object Drawing.Size(700, 500)
+$form.AutoScroll = $true
 $form.StartPosition = "CenterScreen"
 $form.BackColor = $C_BG
 $form.ForeColor = $C_TXT
@@ -391,8 +523,11 @@ function New-Text([int]$w = 420) { $t = New-Object Windows.Forms.TextBox; $t.Wid
 $cbProfile = New-Object Windows.Forms.ComboBox; $cbProfile.DropDownStyle = "DropDownList"; $cbProfile.Width = 420
 Add-Row "Cliente salvo" $cbProfile "Escolha para carregar um app ja gerado (gera a proxima versao)."
 $cbApp = New-Object Windows.Forms.ComboBox; $cbApp.DropDownStyle = "DropDownList"; $cbApp.Width = 420
-foreach ($k in $Apps.Keys) { [void]$cbApp.Items.Add($k) }; $cbApp.SelectedIndex = 0
-Add-Row "App base" $cbApp "NovaTV = filmes, series e canais  |  NovaSports = futebol e esportes"
+foreach ($k in $Models.Keys) { [void]$cbApp.Items.Add($k) }; $cbApp.SelectedIndex = 0
+$appHint = $null
+Add-Row "Modelo do app" $cbApp $Models["NovaTV"].desc
+$appHint = $form.Controls[$form.Controls.Count - 1]
+$cbApp.Add_SelectedIndexChanged({ if ($appHint) { $appHint.Text = $Models[[string]$cbApp.SelectedItem].desc } })
 $tLabel = New-Text; Add-Row "Nome do app" $tLabel "Como aparece no celular/TV (max. 30 letras)."
 $tId = New-Text; Add-Row "Pacote" $tId "Unico por app. Ex.: com.minhatv.app (letras minusculas, numeros e pontos)."
 $tPanel = New-Text; Add-Row "URL do painel" $tPanel "Ex.: https://p2pwmax.dexdown.shop  (vazio = padrao)"
@@ -427,6 +562,9 @@ $bColor.Add_Click({
 })
 $form.Controls.Add($bColor)
 Add-Row "Cor do icone/banner" $tColor
+$chkPlay = New-Object Windows.Forms.CheckBox
+$chkPlay.Text = "Gerar tambem para Google Play (.aab) - so apps Android"; $chkPlay.Width = 420; $chkPlay.Height = 26
+Add-Row "Google Play" $chkPlay
 
 # pre-visualizacao do icone
 $preview = New-Object Windows.Forms.PictureBox
@@ -455,7 +593,7 @@ $log.Multiline = $true; $log.ReadOnly = $true; $log.ScrollBars = "Vertical"
 $log.BackColor = [Drawing.Color]::FromArgb(8, 10, 20); $log.ForeColor = [Drawing.Color]::FromArgb(120, 230, 160)
 $log.Font = New-Object Drawing.Font("Consolas", 9)
 $log.Location = New-Object Drawing.Point(28, ($y + 8)); $log.Size = New-Object Drawing.Size(892, 150)
-$log.Anchor = "Top,Left,Right,Bottom"
+$log.Anchor = "Top,Left,Right"
 $form.Controls.Add($log)
 
 $bGo = New-Object Windows.Forms.Button
@@ -486,6 +624,7 @@ $cbProfile.Add_SelectedIndexChanged({
     $cbApp.SelectedItem = $p.app; $tLabel.Text = $p.label; $tId.Text = $p.id; $tPanel.Text = $p.panel
     $tKey.Text = $p.key; $tRes.Text = $p.reseller; $tLogo.Text = $p.logo; $tIcon.Text = $p.icon
     $tBg.Text = $p.background; $tColor.Text = $p.color
+    $chkPlay.Checked = ($p.play -eq $true)
 })
 
 # tarefa em segundo plano: outro PowerShell gravando num log; a janela le o log a cada 0,5 s
@@ -552,7 +691,7 @@ $bGo.Add_Click({
     $p = [ordered]@{
         app = [string]$cbApp.SelectedItem; label = $label; id = $id; panel = $panel; key = $tKey.Text.Trim()
         reseller = $tRes.Text.Trim(); logo = $tLogo.Text.Trim(); icon = $tIcon.Text.Trim(); background = $tBg.Text.Trim()
-        color = $color; version = $ver
+        color = $color; version = $ver; play = [bool]$chkPlay.Checked
     }
     [IO.File]::WriteAllText($pf, ($p | ConvertTo-Json), (New-Object Text.UTF8Encoding($false)))
     $log.Clear()

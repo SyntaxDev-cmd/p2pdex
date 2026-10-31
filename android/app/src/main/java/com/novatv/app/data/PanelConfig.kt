@@ -46,7 +46,7 @@ class PanelConfig(val json: JSONObject) {
     val splashText: String = app.optString("splash_text")
     val welcome: String = app.optString("welcome")
     val support: String = app.optString("support")
-    val startTab: String = app.optString("start_tab", "highlights")
+    val startTab: String = if (AppConfig.kidsMode) "kids" else app.optString("start_tab", "highlights")
     val allowServerSelect: Boolean = app.optBoolean("allow_server_select", true)
     val resellerName: String = app.optString("reseller")
     val askResellerCode: Boolean = app.optBoolean("ask_reseller_code", false)
@@ -67,10 +67,20 @@ class PanelConfig(val json: JSONObject) {
     val radius: Int = theme.optInt("radius", 12)
     val scale: Int = theme.optInt("scale", 100)
 
-    val tabs: List<Tab> = json.optJSONArray("tabs")?.let { arr ->
+    private val allTabs: List<Tab> = json.optJSONArray("tabs")?.let { arr ->
         (0 until arr.length()).mapNotNull { i -> arr.optJSONObject(i)?.let { Tab(it.optString("id"), it.optString("label"), it.optString("icon"), it.optBoolean("icon_only", true)) } }
     } ?: listOf(Tab("highlights", "INÍCIO"), Tab("tv", "TV"), Tab("sports", "JOGOS"), Tab("movies", "FILMES"),
         Tab("series", "SÉRIES"), Tab("kids", "KIDS"), Tab("anime", "ANIME"), Tab("favorites", "FAVORITOS"))
+
+    /** NovaKids: só as abas infantis (Kids primeiro, canais infantis e favoritos). */
+    val tabs: List<Tab> = if (!AppConfig.kidsMode) allTabs else {
+        val byId = allTabs.associateBy { it.id }
+        listOf(
+            byId["kids"] ?: Tab("kids", "🧸 KIDS"),
+            (byId["tv"] ?: Tab("tv", "TV")).let { if (it.icon.isBlank()) it.copy(label = "📺 CANAIS") else it },
+            (byId["favorites"] ?: Tab("favorites", "FAVORITOS")).let { if (it.icon.isBlank()) it.copy(label = "⭐ FAVORITOS") else it },
+        )
+    }
 
     val servers: List<ServerDef> = json.optJSONArray("servers")?.let { arr ->
         (0 until arr.length()).mapNotNull { i ->

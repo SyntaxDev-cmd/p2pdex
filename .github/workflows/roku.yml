@@ -1,0 +1,55 @@
+name: Roku (validar + pacote)
+
+on:
+  push:
+    branches: [main, "claude/**"]
+    paths: ["roku/**", ".github/workflows/roku.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  roku:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Validar código BrightScript/SceneGraph
+        run: |
+          npm install --no-save --no-audit --no-fund brighterscript@0.65
+          npx bsc --project roku/bsconfig.json
+      - name: Conferir manifest e imagens
+        run: |
+          set -e
+          for k in title major_version minor_version build_version mm_icon_focus_hd splash_screen_fhd ui_resolutions; do
+            grep -q "^$k=" roku/manifest || { echo "::error::manifest sem $k"; exit 1; }
+          done
+          for f in $(grep -o 'pkg:/[^" ]*' -r roku/manifest roku/components | sed 's#.*pkg:/##' | sort -u); do
+            test -f "roku/$f" || { echo "::error::arquivo citado não existe: $f"; exit 1; }
+          done
+          python3 -c "import json;json.load(open('roku/config.json'))"
+      - name: Montar pacote
+        run: |
+          mkdir -p out
+          (cd roku && zip -qr ../out/NovaTV-roku.zip . -x bsconfig.json)
+          unzip -l out/NovaTV-roku.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NovaTV-roku
+          path: out/NovaTV-roku.zip
+      - name: Publicar (teste)
+        if: startsWith(github.ref, 'refs/heads/claude/') || github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: roku-teste
+          target_commitish: ${{ github.sha }}
+          name: "NovaTV Roku - versão de teste"
+          prerelease: true
+          make_latest: false
+          body: |
+            Pacote do NovaTV para Roku (instalação pelo modo desenvolvedor).
+            Link fixo: https://github.com/${{ github.repository }}/releases/download/roku-teste/NovaTV-roku.zip
+          files: out/NovaTV-roku.zip
