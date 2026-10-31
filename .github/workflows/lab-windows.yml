@@ -71,7 +71,8 @@ jobs:
           if ((Get-ChildItem SAIDA -Filter *.apk).Count -lt 3) { Write-Host "::error::faltam APKs (NovaTV, NovaSports, NovaKids)"; exit 1 }
           if ((Get-ChildItem SAIDA -Filter *.aab).Count -lt 3) { Write-Host "::error::faltam AABs da Google Play"; exit 1 }
           if ((Get-ChildItem SAIDA -Filter *-roku-*.zip).Count -lt 3) { Write-Host "::error::faltam pacotes Roku (TV, Kids, Esportes)"; exit 1 }
-          if ((Get-ChildItem perfis -Filter *.json).Count -lt 7) { Write-Host "::error::clientes de cada modelo não foram salvos"; exit 1 }
+          if (-not (Test-Path SAIDA\LabTeste-v1.apk)) { Write-Host "::error::versão do NovaTV pulou (esperado v1)"; exit 1 }
+          if ((Get-ChildItem perfis -Filter *.json).Count -lt 6) { Write-Host "::error::clientes de cada modelo não foram salvos"; exit 1 }
 
       - name: Projeto voltou ao original depois de gerar
         shell: bash

@@ -467,7 +467,8 @@ function Build-All([string]$profilePath) {
         if ($label.Length -gt 30) { $label = $label.Substring(0, 30).Trim() }
         $pf = Join-Path $Prof ($id + ".json")
         $ver = 1
-        if (Test-Path $pf) { try { $ver = [int]((Get-Content $pf -Raw -Encoding UTF8 | ConvertFrom-Json).version) + 1 } catch { $ver = 1 } }
+        if ($id -eq $base.id) { $ver = [int]$base.version }   # perfil do proprio cliente: a janela ja subiu a versao
+        elseif (Test-Path $pf) { try { $ver = [int]((Get-Content $pf -Raw -Encoding UTF8 | ConvertFrom-Json).version) + 1 } catch { $ver = 1 } }
         $p = [ordered]@{
             app = $name; label = $label; id = $id; panel = $base.panel; key = $base.key; reseller = $base.reseller
             logo = $base.logo; icon = $base.icon; background = $base.background; color = $base.color; version = $ver; play = [bool]$base.play
